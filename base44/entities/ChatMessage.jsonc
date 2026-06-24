@@ -1,0 +1,27 @@
+{
+  "name": "ChatMessage",
+  "type": "object",
+  "properties": {
+    "plan_id": {
+      "type": "string"
+    },
+    "phase": {
+      "type": "string"
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "user",
+        "assistant"
+      ]
+    },
+    "content": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "plan_id",
+    "role",
+    "content"
+  ]
+}

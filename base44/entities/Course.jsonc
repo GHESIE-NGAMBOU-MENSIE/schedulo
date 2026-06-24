@@ -1,0 +1,81 @@
+{
+  "name": "Course",
+  "type": "object",
+  "properties": {
+    "plan_id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "course_type": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "credit_points": {
+      "type": "number"
+    },
+    "exam_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "description": {
+      "type": "string"
+    },
+    "difficulty": {
+      "type": "string",
+      "enum": [
+        "easy",
+        "medium",
+        "difficult"
+      ],
+      "default": "medium"
+    },
+    "familiarity": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "default": "medium"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "default": "medium"
+    },
+    "materials_text": {
+      "type": "string"
+    },
+    "material_files": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "uri"
+      }
+    },
+    "confirmed": {
+      "type": "boolean",
+      "default": false
+    },
+    "tasks_extracted": {
+      "type": "boolean",
+      "default": false
+    },
+    "time_adjustment_factor": {
+      "type": "number",
+      "default": 1.0
+    }
+  },
+  "required": [
+    "name",
+    "plan_id"
+  ]
+}

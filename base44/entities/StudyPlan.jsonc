@@ -1,0 +1,66 @@
+{
+  "name": "StudyPlan",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "start_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "end_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "active",
+        "completed",
+        "archived"
+      ],
+      "default": "draft"
+    },
+    "phase": {
+      "type": "string",
+      "enum": [
+        "setup",
+        "courses",
+        "generation",
+        "active"
+      ],
+      "default": "setup"
+    },
+    "step": {
+      "type": "number",
+      "default": 1
+    },
+    "preferences": {
+      "type": "object"
+    },
+    "feasibility": {
+      "type": "object"
+    },
+    "calendar_events": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "scenarios": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "active_scenario": {
+      "type": "number",
+      "default": 0
+    }
+  },
+  "required": [
+    "name"
+  ]
+}
