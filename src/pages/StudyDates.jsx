@@ -33,35 +33,35 @@ function parseICS(text, startDate, endDate) {
       }
       current = null;
     } else if (current) {
-      if (line.startsWith('SUMMARY:')) current.name = line.slice(8).trim();
-      else if (line.startsWith('DTSTART')) {
+      if (line.startsWith('SUMMARY:')) current.name = line.slice(8).trim();else
+      if (line.startsWith('DTSTART')) {
         const val = line.split(':').pop();
         if (val.length === 8) {
-          current.date = `${val.slice(0,4)}-${val.slice(4,6)}-${val.slice(6,8)}`;
+          current.date = `${val.slice(0, 4)}-${val.slice(4, 6)}-${val.slice(6, 8)}`;
           current.start_time = '09:00';
           current.end_time = '10:00';
         } else if (val.length >= 15) {
-          current.date = `${val.slice(0,4)}-${val.slice(4,6)}-${val.slice(6,8)}`;
-          current.start_time = `${val.slice(9,11)}:${val.slice(11,13)}`;
+          current.date = `${val.slice(0, 4)}-${val.slice(4, 6)}-${val.slice(6, 8)}`;
+          current.start_time = `${val.slice(9, 11)}:${val.slice(11, 13)}`;
         }
       } else if (line.startsWith('DTEND')) {
         const val = line.split(':').pop();
         if (val.length >= 15) {
-          current.end_time = `${val.slice(9,11)}:${val.slice(11,13)}`;
+          current.end_time = `${val.slice(9, 11)}:${val.slice(11, 13)}`;
         }
       } else if (line.startsWith('RRULE:')) {
         current.recurrence = line.includes('WEEKLY') ? 'weekly' : 'custom';
       }
     }
   }
-  return events.map(e => ({
+  return events.map((e) => ({
     name: e.name || 'Untitled Event',
     type: guessType(e.name || ''),
     date: e.date || '',
     start_time: e.start_time || '09:00',
     end_time: e.end_time || '10:00',
     recurrence: e.recurrence || 'none',
-    is_course: isCourse(e.name || '', e),
+    is_course: isCourse(e.name || '', e)
   }));
 }
 
@@ -111,7 +111,7 @@ export default function StudyDates() {
     try {
       const text = await file.text();
       const parsed = parseICS(text, startDate || '2000-01-01', endDate || '2099-12-31');
-      setEvents(prev => [...prev, ...parsed]);
+      setEvents((prev) => [...prev, ...parsed]);
     } catch (err) {
       console.error(err);
     }
@@ -120,10 +120,10 @@ export default function StudyDates() {
 
   const addManualEvent = () => {
     if (editIdx !== null) {
-      setEvents(prev => prev.map((ev, i) => i === editIdx ? { ...manualEvent, is_course: isCourse(manualEvent.name, manualEvent) } : ev));
+      setEvents((prev) => prev.map((ev, i) => i === editIdx ? { ...manualEvent, is_course: isCourse(manualEvent.name, manualEvent) } : ev));
       setEditIdx(null);
     } else {
-      setEvents(prev => [...prev, { ...manualEvent, is_course: isCourse(manualEvent.name, manualEvent) }]);
+      setEvents((prev) => [...prev, { ...manualEvent, is_course: isCourse(manualEvent.name, manualEvent) }]);
     }
     setManualEvent({ name: '', type: 'other', date: '', start_time: '09:00', end_time: '10:00', recurrence: 'none' });
     setShowManual(false);
@@ -136,7 +136,7 @@ export default function StudyDates() {
   };
 
   const deleteEvent = (idx) => {
-    setEvents(prev => prev.filter((_, i) => i !== idx));
+    setEvents((prev) => prev.filter((_, i) => i !== idx));
   };
 
   const handleNext = async () => {
@@ -147,7 +147,7 @@ export default function StudyDates() {
       step: 2
     });
     // Create courses from detected course events
-    const courseNames = [...new Set(events.filter(e => e.is_course).map(e => e.name))];
+    const courseNames = [...new Set(events.filter((e) => e.is_course).map((e) => e.name))];
     for (const name of courseNames) {
       try {
         await base44.entities.Course.create({ plan_id: planId, name, course_type: [], confirmed: false });
@@ -166,21 +166,21 @@ export default function StudyDates() {
           <StepHeader
             icon={Calendar}
             title="Study Period & Calendar"
-            description="Set when your study plan should start and end, then import your calendar so I can find your fixed events and free study slots."
-          />
+            description="Set when your study plan should start and end, then import your calendar so I can find your fixed events and free study slots." />
+          
 
           {/* Date inputs */}
           <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-6">
             <h3 className="font-semibold text-gray-900 mb-1">When should your study plan start and end?</h3>
-            <p className="text-sm text-gray-400 mb-4">Pick the start and end of your semester or study period.</p>
+            <p className="text-sm text-gray-400 mb-4 hidden">Pick the start and end of your semester or study period.</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label className="text-sm text-gray-600">Start date</Label>
-                <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="mt-1" />
+                <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="mt-1" />
               </div>
               <div>
                 <Label className="text-sm text-gray-600">End date</Label>
-                <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="mt-1" />
+                <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="mt-1" />
               </div>
             </div>
           </div>
@@ -197,48 +197,48 @@ export default function StudyDates() {
                   {uploading ? 'Parsing...' : 'Upload .ics file'}
                 </div>
               </label>
-              <Button variant="outline" size="sm" onClick={() => { setEditIdx(null); setManualEvent({ name: '', type: 'other', date: '', start_time: '09:00', end_time: '10:00', recurrence: 'none' }); setShowManual(true); }}>
+              <Button variant="outline" size="sm" onClick={() => {setEditIdx(null);setManualEvent({ name: '', type: 'other', date: '', start_time: '09:00', end_time: '10:00', recurrence: 'none' });setShowManual(true);}}>
                 <Plus className="w-4 h-4 mr-1" /> Add event manually
               </Button>
             </div>
           </div>
 
           {/* Manual event form */}
-          {showManual && (
-            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="bg-white rounded-xl border border-blue-200 p-6 shadow-sm mb-6">
+          {showManual &&
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="bg-white rounded-xl border border-blue-200 p-6 shadow-sm mb-6">
               <h3 className="font-semibold text-gray-900 mb-4">{editIdx !== null ? 'Edit event' : 'Add a fixed event'}</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="sm:col-span-2">
                   <Label className="text-sm text-gray-600">Event name</Label>
-                  <Input value={manualEvent.name} onChange={e => setManualEvent(p => ({ ...p, name: e.target.value }))} placeholder="e.g., Statistics Lecture" className="mt-1" />
+                  <Input value={manualEvent.name} onChange={(e) => setManualEvent((p) => ({ ...p, name: e.target.value }))} placeholder="e.g., Statistics Lecture" className="mt-1" />
                 </div>
                 <div>
                   <Label className="text-sm text-gray-600">Type</Label>
-                  <Select value={manualEvent.type} onValueChange={v => setManualEvent(p => ({ ...p, type: v }))}>
+                  <Select value={manualEvent.type} onValueChange={(v) => setManualEvent((p) => ({ ...p, type: v }))}>
                     <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {EVENT_TYPES.map(t => <SelectItem key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</SelectItem>)}
+                      {EVENT_TYPES.map((t) => <SelectItem key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
                 <div>
                   <Label className="text-sm text-gray-600">Date</Label>
-                  <Input type="date" value={manualEvent.date} onChange={e => setManualEvent(p => ({ ...p, date: e.target.value }))} className="mt-1" />
+                  <Input type="date" value={manualEvent.date} onChange={(e) => setManualEvent((p) => ({ ...p, date: e.target.value }))} className="mt-1" />
                 </div>
                 <div>
                   <Label className="text-sm text-gray-600">Start time</Label>
-                  <Input type="time" value={manualEvent.start_time} onChange={e => setManualEvent(p => ({ ...p, start_time: e.target.value }))} className="mt-1" />
+                  <Input type="time" value={manualEvent.start_time} onChange={(e) => setManualEvent((p) => ({ ...p, start_time: e.target.value }))} className="mt-1" />
                 </div>
                 <div>
                   <Label className="text-sm text-gray-600">End time</Label>
-                  <Input type="time" value={manualEvent.end_time} onChange={e => setManualEvent(p => ({ ...p, end_time: e.target.value }))} className="mt-1" />
+                  <Input type="time" value={manualEvent.end_time} onChange={(e) => setManualEvent((p) => ({ ...p, end_time: e.target.value }))} className="mt-1" />
                 </div>
                 <div>
                   <Label className="text-sm text-gray-600">Recurrence</Label>
-                  <Select value={manualEvent.recurrence} onValueChange={v => setManualEvent(p => ({ ...p, recurrence: v }))}>
+                  <Select value={manualEvent.recurrence} onValueChange={(v) => setManualEvent((p) => ({ ...p, recurrence: v }))}>
                     <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {RECURRENCE_OPTIONS.map(r => <SelectItem key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</SelectItem>)}
+                      {RECURRENCE_OPTIONS.map((r) => <SelectItem key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
@@ -247,14 +247,14 @@ export default function StudyDates() {
                 <Button onClick={addManualEvent} disabled={!manualEvent.name || !manualEvent.date} size="sm">
                   <Check className="w-4 h-4 mr-1" /> {editIdx !== null ? 'Save changes' : 'Add event'}
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => { setShowManual(false); setEditIdx(null); }}>Cancel</Button>
+                <Button variant="ghost" size="sm" onClick={() => {setShowManual(false);setEditIdx(null);}}>Cancel</Button>
               </div>
             </motion.div>
-          )}
+          }
 
           {/* Detected events table */}
-          {events.length > 0 && (
-            <div className="bg-white rounded-xl border border-blue-100 shadow-sm mb-6 overflow-hidden">
+          {events.length > 0 &&
+          <div className="bg-white rounded-xl border border-blue-100 shadow-sm mb-6 overflow-hidden">
               <div className="p-4 border-b border-blue-50">
                 <h3 className="font-semibold text-gray-900">{events.length} detected events</h3>
                 <p className="text-xs text-gray-400">Review, edit, or remove events. Events marked as courses will appear in the next phase.</p>
@@ -273,17 +273,17 @@ export default function StudyDates() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {events.map((ev, i) => (
-                      <tr key={i} className="hover:bg-blue-50/50 transition-colors">
+                    {events.map((ev, i) =>
+                  <tr key={i} className="hover:bg-blue-50/50 transition-colors">
                         <td className="px-4 py-3 font-medium text-gray-900">{ev.name}</td>
                         <td className="px-4 py-3">
                           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                            ev.type === 'lecture' ? 'bg-blue-100 text-blue-700' :
-                            ev.type === 'exercise' ? 'bg-purple-100 text-purple-700' :
-                            ev.type === 'work' ? 'bg-amber-100 text-amber-700' :
-                            ev.type === 'sport' ? 'bg-green-100 text-green-700' :
-                            'bg-gray-100 text-gray-600'
-                          }`}>
+                      ev.type === 'lecture' ? 'bg-blue-100 text-blue-700' :
+                      ev.type === 'exercise' ? 'bg-purple-100 text-purple-700' :
+                      ev.type === 'work' ? 'bg-amber-100 text-amber-700' :
+                      ev.type === 'sport' ? 'bg-green-100 text-green-700' :
+                      'bg-gray-100 text-gray-600'}`
+                      }>
                             {ev.type}
                           </span>
                         </td>
@@ -298,12 +298,12 @@ export default function StudyDates() {
                           </div>
                         </td>
                       </tr>
-                    ))}
+                  )}
                   </tbody>
                 </table>
               </div>
             </div>
-          )}
+          }
 
           {/* Navigation */}
           <div className="flex justify-between items-center">
@@ -317,10 +317,10 @@ export default function StudyDates() {
         </motion.div>
       </div>
       <ContextChat phase="dates" planId={planId} suggestions={[
-        "What should I upload here?",
-        "What is an .ics file?",
-        "How do I add events manually?"
-      ]} />
-    </div>
-  );
+      "What should I upload here?",
+      "What is an .ics file?",
+      "How do I add events manually?"]
+      } />
+    </div>);
+
 }
