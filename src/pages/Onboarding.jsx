@@ -56,9 +56,9 @@ export default function Onboarding() {
           <p className="text-lg text-gray-600 max-w-md mx-auto leading-relaxed">
             I'm <span className="font-semibold text-blue-600">Schedulo</span>, your smart semester planning assistant. I'll help you create a personalized study plan based on your courses, calendar, deadlines, workload, and study preferences.
           </p>
-          <p className="text-sm text-gray-400 mt-3 max-w-md mx-auto hidden">
-            During the semester, you can tell me when something changes, and I'll help you update your plan.
-          </p>
+          
+
+          
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-10">
