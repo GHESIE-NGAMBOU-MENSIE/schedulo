@@ -172,7 +172,7 @@ export default function StudyDates() {
           {/* Date inputs */}
           <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-6">
             <h3 className="font-semibold text-gray-900 mb-1">When should your study plan start and end?</h3>
-            <p className="text-sm text-gray-400 mb-4 hidden">Pick the start and end of your semester or study period.</p>
+            
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label className="text-sm text-gray-600">Start date</Label>
