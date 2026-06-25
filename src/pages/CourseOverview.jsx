@@ -357,17 +357,17 @@ export default function CourseOverview() {
 
           {/* Add course */}
           <div className="bg-white rounded-xl border border-dashed border-blue-200 p-4 mb-8">
-            <div className="flex gap-2 hidden">
-              <Input
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                placeholder="Enter course name…"
-                onKeyDown={(e) => e.key === 'Enter' && addCourse()} className="hidden" />
-              
-              <Button onClick={addCourse} disabled={!newName.trim()} className="bg-blue-600 hover:bg-blue-700">
-                <Plus className="w-4 h-4 mr-1" /> Add
-              </Button>
-            </div>
+            
+
+
+
+
+
+
+
+
+
+            
           </div>
 
           {continueError &&
