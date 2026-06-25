@@ -104,16 +104,17 @@ Return JSON with a "schedule" array where each item has:
       });
 
       const schedule = result.schedule || [];
-      for (const item of schedule) {
-        const task = allTasks.find(t => t.id === item.task_id);
-        if (task) {
-          await base44.entities.StudyTask.update(task.id, {
-            scheduled_date: item.scheduled_date,
-            scheduled_start: item.scheduled_start,
-            scheduled_end: item.scheduled_end,
-            explanation: item.explanation
-          });
-        }
+      const bulkUpdates = schedule
+        .filter(item => allTasks.find(t => t.id === item.task_id))
+        .map(item => ({
+          id: item.task_id,
+          scheduled_date: item.scheduled_date,
+          scheduled_start: item.scheduled_start,
+          scheduled_end: item.scheduled_end,
+          explanation: item.explanation
+        }));
+      if (bulkUpdates.length > 0) {
+        await base44.entities.StudyTask.bulkUpdate(bulkUpdates);
       }
 
       const updatedTasks = await base44.entities.StudyTask.filter({ plan_id: planId });
@@ -179,10 +180,9 @@ Return JSON with a "schedule" array where each item has:
 
   const confirmPlan = async () => {
     await base44.entities.StudyPlan.update(planId, { status: 'active', phase: 'active', step: 9 });
-    for (const t of tasks) {
-      if (t.scheduled_date) {
-        await base44.entities.StudyTask.update(t.id, { confirmed: true });
-      }
+    const toConfirm = tasks.filter(t => t.scheduled_date).map(t => ({ id: t.id, confirmed: true }));
+    if (toConfirm.length > 0) {
+      await base44.entities.StudyTask.bulkUpdate(toConfirm);
     }
     navigate(`/plan/${planId}/active`);
   };
