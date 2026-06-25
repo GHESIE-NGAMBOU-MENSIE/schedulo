@@ -20,8 +20,8 @@ const COMMITMENT_KEYWORDS = ['meeting', 'gym', 'sport', 'party', 'dinner', 'lunc
 
 function guessType(name) {
   const n = name.toLowerCase();
-  if (COMMITMENT_KEYWORDS.some(k => n.includes(k))) return 'commitment';
-  if (COURSE_KEYWORDS.some(k => n.includes(k))) return 'course';
+  if (COMMITMENT_KEYWORDS.some((k) => n.includes(k))) return 'commitment';
+  if (COURSE_KEYWORDS.some((k) => n.includes(k))) return 'course';
   // Default: if it looks like a subject name (single/two words, capitalized), treat as course
   const wordCount = name.trim().split(/\s+/).length;
   if (wordCount <= 3) return 'course';
@@ -37,15 +37,15 @@ const RRULE_DAYS = { MO: 'Monday', TU: 'Tuesday', WE: 'Wednesday', TH: 'Thursday
 function parseDateVal(val) {
   if (!val) return { date: '', time: '' };
   const raw = val.split(':').pop();
-  if (raw.length === 8) return { date: `${raw.slice(0,4)}-${raw.slice(4,6)}-${raw.slice(6,8)}`, time: '' };
-  if (raw.length >= 15) return { date: `${raw.slice(0,4)}-${raw.slice(4,6)}-${raw.slice(6,8)}`, time: `${raw.slice(9,11)}:${raw.slice(11,13)}` };
+  if (raw.length === 8) return { date: `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`, time: '' };
+  if (raw.length >= 15) return { date: `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`, time: `${raw.slice(9, 11)}:${raw.slice(11, 13)}` };
   return { date: '', time: '' };
 }
 
 function extractDayFromRrule(rrule) {
   const m = rrule.match(/BYDAY=([A-Z,]+)/);
   if (!m) return 'Flexible';
-  const days = m[1].split(',').map(d => RRULE_DAYS[d]).filter(Boolean);
+  const days = m[1].split(',').map((d) => RRULE_DAYS[d]).filter(Boolean);
   return days.length === 1 ? days[0] : 'Flexible';
 }
 
@@ -53,7 +53,7 @@ function extractUntilFromRrule(rrule) {
   const m = rrule.match(/UNTIL=(\d{8})/);
   if (!m) return '';
   const v = m[1];
-  return `${v.slice(0,4)}-${v.slice(4,6)}-${v.slice(6,8)}`;
+  return `${v.slice(0, 4)}-${v.slice(4, 6)}-${v.slice(6, 8)}`;
 }
 
 // Parse ICS and deduplicate recurring events — one entry per unique name
@@ -76,9 +76,9 @@ function parseICS(text, startDate, endDate) {
       const key = line.slice(0, colonIdx);
       const val = line.slice(colonIdx + 1).trim();
 
-      if (key === 'SUMMARY') current.name = val;
-      else if (key === 'DESCRIPTION') current.description = val;
-      else if (key.startsWith('DTSTART')) {
+      if (key === 'SUMMARY') current.name = val;else
+      if (key === 'DESCRIPTION') current.description = val;else
+      if (key.startsWith('DTSTART')) {
         const { date, time } = parseDateVal(line);
         current.date = date;
         current.start_time = time;
@@ -179,8 +179,8 @@ export default function StudyDates() {
       const parsed = parseICS(text, startDate || '2000-01-01', endDate || '2099-12-31');
       setEvents((prev) => {
         // Merge: avoid duplicate names from recurring
-        const existingNames = new Set(prev.filter(e => e.is_recurring).map(e => e.name));
-        const newEvents = parsed.filter(e => !e.is_recurring || !existingNames.has(e.name));
+        const existingNames = new Set(prev.filter((e) => e.is_recurring).map((e) => e.name));
+        const newEvents = parsed.filter((e) => !e.is_recurring || !existingNames.has(e.name));
         return [...prev, ...newEvents];
       });
     } catch (err) {
@@ -204,7 +204,7 @@ export default function StudyDates() {
 
   const addManualEvent = () => {
     const errs = validateManual();
-    if (Object.keys(errs).length > 0) { setManualErrors(errs); return; }
+    if (Object.keys(errs).length > 0) {setManualErrors(errs);return;}
     const ev = {
       ...manualEvent,
       is_course: isCourse(manualEvent.type),
@@ -246,7 +246,7 @@ export default function StudyDates() {
     if (!startDate) errs.startDate = 'Start date is required';
     if (!endDate) errs.endDate = 'End date is required';
     if (startDate && endDate && endDate < startDate) errs.endDate = 'End date must be after start date';
-    if (Object.keys(errs).length > 0) { setErrors(errs); return; }
+    if (Object.keys(errs).length > 0) {setErrors(errs);return;}
 
     await base44.entities.StudyPlan.update(planId, {
       start_date: startDate,
@@ -269,7 +269,7 @@ export default function StudyDates() {
   };
 
   // Progress: dates = 33%, if events added = 66%, both done = 100%
-  const progressValue = (!startDate && !endDate) ? 0 : (!startDate || !endDate) ? 33 : events.length === 0 ? 66 : 100;
+  const progressValue = !startDate && !endDate ? 0 : !startDate || !endDate ? 33 : events.length === 0 ? 66 : 100;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
@@ -279,16 +279,16 @@ export default function StudyDates() {
           <StepHeader
             icon={Calendar}
             title="Study Period & Calendar"
-            description="Set when your study plan should start and end, then import your calendar so I can find your fixed events and free study slots."
-          />
+            description="Set when your study plan should start and end, then import your calendar so I can find your fixed events and free study slots." />
+          
 
           {/* Progress bar */}
           <div className="mb-6">
             <div className="flex justify-between text-xs text-gray-500 mb-1">
               <span>Step 1 of 4 — Calendar Setup</span>
-              <span>{progressValue}% complete</span>
+              <span className="hidden">{progressValue}% complete</span>
             </div>
-            <Progress value={progressValue} className="h-2" />
+            <Progress value={progressValue} className="h-2 hidden" />
           </div>
 
           {/* Date inputs */}
@@ -300,9 +300,9 @@ export default function StudyDates() {
                 <Input
                   type="date"
                   value={startDate}
-                  onChange={(e) => { setStartDate(e.target.value); setErrors(p => ({ ...p, startDate: undefined })); }}
-                  className={`mt-1 ${errors.startDate ? 'border-red-400 focus:ring-red-200' : ''}`}
-                />
+                  onChange={(e) => {setStartDate(e.target.value);setErrors((p) => ({ ...p, startDate: undefined }));}}
+                  className={`mt-1 ${errors.startDate ? 'border-red-400 focus:ring-red-200' : ''}`} />
+                
                 {errors.startDate && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{errors.startDate}</p>}
               </div>
               <div>
@@ -310,9 +310,9 @@ export default function StudyDates() {
                 <Input
                   type="date"
                   value={endDate}
-                  onChange={(e) => { setEndDate(e.target.value); setErrors(p => ({ ...p, endDate: undefined })); }}
-                  className={`mt-1 ${errors.endDate ? 'border-red-400 focus:ring-red-200' : ''}`}
-                />
+                  onChange={(e) => {setEndDate(e.target.value);setErrors((p) => ({ ...p, endDate: undefined }));}}
+                  className={`mt-1 ${errors.endDate ? 'border-red-400 focus:ring-red-200' : ''}`} />
+                
                 {errors.endDate && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{errors.endDate}</p>}
               </div>
             </div>
@@ -333,34 +333,34 @@ export default function StudyDates() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => { setEditIdx(null); setManualEvent(emptyManual); setManualErrors({}); setShowManual(true); }}
-              >
+                onClick={() => {setEditIdx(null);setManualEvent(emptyManual);setManualErrors({});setShowManual(true);}}>
+                
                 <Plus className="w-4 h-4 mr-1" /> Add event manually
               </Button>
             </div>
           </div>
 
           {/* Manual event form */}
-          {showManual && (
-            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="bg-white rounded-xl border border-blue-200 p-6 shadow-sm mb-6">
+          {showManual &&
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="bg-white rounded-xl border border-blue-200 p-6 shadow-sm mb-6">
               <h3 className="font-semibold text-gray-900 mb-4">{editIdx !== null ? 'Edit event' : 'Add a fixed event'}</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* Event Name */}
                 <div className="sm:col-span-2">
                   <Label className="text-sm text-gray-600">Event name *</Label>
                   <Input
-                    value={manualEvent.name}
-                    onChange={(e) => { setManualEvent((p) => ({ ...p, name: e.target.value })); setManualErrors(p => ({ ...p, name: undefined })); }}
-                    placeholder="e.g., Statistics Lecture"
-                    className={`mt-1 ${manualErrors.name ? 'border-red-400' : ''}`}
-                  />
+                  value={manualEvent.name}
+                  onChange={(e) => {setManualEvent((p) => ({ ...p, name: e.target.value }));setManualErrors((p) => ({ ...p, name: undefined }));}}
+                  placeholder="e.g., Statistics Lecture"
+                  className={`mt-1 ${manualErrors.name ? 'border-red-400' : ''}`} />
+                
                   {manualErrors.name && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{manualErrors.name}</p>}
                 </div>
 
                 {/* Event Type */}
                 <div>
                   <Label className="text-sm text-gray-600">Event type *</Label>
-                  <Select value={manualEvent.type} onValueChange={(v) => { setManualEvent((p) => ({ ...p, type: v })); setManualErrors(p => ({ ...p, type: undefined })); }}>
+                  <Select value={manualEvent.type} onValueChange={(v) => {setManualEvent((p) => ({ ...p, type: v }));setManualErrors((p) => ({ ...p, type: undefined }));}}>
                     <SelectTrigger className={`mt-1 ${manualErrors.type ? 'border-red-400' : ''}`}><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="commitment">Commitment</SelectItem>
@@ -376,25 +376,25 @@ export default function StudyDates() {
                   <Select value={manualEvent.day_of_week} onValueChange={(v) => setManualEvent((p) => ({ ...p, day_of_week: v }))}>
                     <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {DAYS_OF_WEEK.map((d) => (
-                        <SelectItem key={d} value={d}>{d}</SelectItem>
-                      ))}
+                      {DAYS_OF_WEEK.map((d) =>
+                    <SelectItem key={d} value={d}>{d}</SelectItem>
+                    )}
                     </SelectContent>
                   </Select>
-                  {manualEvent.day_of_week === 'Flexible' && (
-                    <p className="text-xs text-gray-400 mt-1">Flexible = no fixed day; can be done any time.</p>
-                  )}
+                  {manualEvent.day_of_week === 'Flexible' &&
+                <p className="text-xs text-gray-400 mt-1">Flexible = no fixed day; can be done any time.</p>
+                }
                 </div>
 
                 {/* Start date */}
                 <div>
                   <Label className="text-sm text-gray-600">Start date *</Label>
                   <Input
-                    type="date"
-                    value={manualEvent.start_date}
-                    onChange={(e) => { setManualEvent((p) => ({ ...p, start_date: e.target.value })); setManualErrors(p => ({ ...p, start_date: undefined })); }}
-                    className={`mt-1 ${manualErrors.start_date ? 'border-red-400' : ''}`}
-                  />
+                  type="date"
+                  value={manualEvent.start_date}
+                  onChange={(e) => {setManualEvent((p) => ({ ...p, start_date: e.target.value }));setManualErrors((p) => ({ ...p, start_date: undefined }));}}
+                  className={`mt-1 ${manualErrors.start_date ? 'border-red-400' : ''}`} />
+                
                   {manualErrors.start_date && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{manualErrors.start_date}</p>}
                 </div>
 
@@ -402,11 +402,11 @@ export default function StudyDates() {
                 <div>
                   <Label className="text-sm text-gray-600">End date *</Label>
                   <Input
-                    type="date"
-                    value={manualEvent.end_date}
-                    onChange={(e) => { setManualEvent((p) => ({ ...p, end_date: e.target.value })); setManualErrors(p => ({ ...p, end_date: undefined })); }}
-                    className={`mt-1 ${manualErrors.end_date ? 'border-red-400' : ''}`}
-                  />
+                  type="date"
+                  value={manualEvent.end_date}
+                  onChange={(e) => {setManualEvent((p) => ({ ...p, end_date: e.target.value }));setManualErrors((p) => ({ ...p, end_date: undefined }));}}
+                  className={`mt-1 ${manualErrors.end_date ? 'border-red-400' : ''}`} />
+                
                   {manualErrors.end_date && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{manualErrors.end_date}</p>}
                 </div>
 
@@ -426,16 +426,16 @@ export default function StudyDates() {
                 <Button onClick={addManualEvent} size="sm">
                   <Check className="w-4 h-4 mr-1" /> {editIdx !== null ? 'Save changes' : 'Add event'}
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => { setShowManual(false); setEditIdx(null); setManualErrors({}); }}>
+                <Button variant="ghost" size="sm" onClick={() => {setShowManual(false);setEditIdx(null);setManualErrors({});}}>
                   <X className="w-4 h-4 mr-1" /> Cancel
                 </Button>
               </div>
             </motion.div>
-          )}
+          }
 
           {/* Detected events table */}
-          {events.length > 0 && (
-            <div className="bg-white rounded-xl border border-blue-100 shadow-sm mb-6 overflow-hidden">
+          {events.length > 0 &&
+          <div className="bg-white rounded-xl border border-blue-100 shadow-sm mb-6 overflow-hidden">
               <div className="p-4 border-b border-blue-50">
                 <h3 className="font-semibold text-gray-900">{events.length} detected events</h3>
                 <p className="text-xs text-gray-400">Recurring events are shown once. Click the type badge to toggle between Course and Commitment.</p>
@@ -454,21 +454,21 @@ export default function StudyDates() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {events.map((ev, i) => (
-                      <tr key={i} className="hover:bg-blue-50/50 transition-colors">
+                    {events.map((ev, i) =>
+                  <tr key={i} className="hover:bg-blue-50/50 transition-colors">
                         <td className="px-4 py-3 font-medium text-gray-900">
                           {ev.name}
                           {ev.is_recurring && <span className="ml-1 text-purple-600 text-xs bg-purple-50 px-1.5 py-0.5 rounded">Recurring</span>}
                         </td>
                         <td className="px-4 py-3">
                           <button
-                            onClick={() => {
-                              const newType = ev.type === 'course' ? 'commitment' : 'course';
-                              setEvents(prev => prev.map((e, idx) => idx === i ? { ...e, type: newType, is_course: newType === 'course' } : e));
-                            }}
-                            title="Click to toggle type"
-                            className={`px-2 py-0.5 rounded-full text-xs font-medium cursor-pointer transition-colors hover:opacity-80 ${ev.type === 'course' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}
-                          >
+                        onClick={() => {
+                          const newType = ev.type === 'course' ? 'commitment' : 'course';
+                          setEvents((prev) => prev.map((e, idx) => idx === i ? { ...e, type: newType, is_course: newType === 'course' } : e));
+                        }}
+                        title="Click to toggle type"
+                        className={`px-2 py-0.5 rounded-full text-xs font-medium cursor-pointer transition-colors hover:opacity-80 ${ev.type === 'course' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
+                        
                             {ev.type === 'course' ? 'Course' : 'Commitment'}
                           </button>
                         </td>
@@ -485,12 +485,12 @@ export default function StudyDates() {
                           </div>
                         </td>
                       </tr>
-                    ))}
+                  )}
                   </tbody>
                 </table>
               </div>
             </div>
-          )}
+          }
 
           {/* Navigation */}
           <div className="flex justify-between items-center">
@@ -504,8 +504,8 @@ export default function StudyDates() {
         </motion.div>
       </div>
       {/* Helper banner */}
-      {showBanner && (
-        <div className="fixed bottom-24 right-6 z-40 max-w-xs">
+      {showBanner &&
+      <div className="fixed bottom-24 right-6 z-40 max-w-xs">
           <div className="bg-blue-600 text-white text-sm px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2">
             <span>👋</span>
             <span className="flex-1">Hi! Click the chat button below if you have any questions.</span>
@@ -514,12 +514,12 @@ export default function StudyDates() {
             </button>
           </div>
         </div>
-      )}
+      }
       <ContextChat phase="dates" planId={planId} suggestions={[
-        "What should I upload here?",
-        "What is an .ics file?",
-        "How do I add events manually?"
-      ]} />
-    </div>
-  );
+      "What should I upload here?",
+      "What is an .ics file?",
+      "How do I add events manually?"]
+      } />
+    </div>);
+
 }
