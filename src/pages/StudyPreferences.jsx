@@ -148,7 +148,7 @@ export default function StudyPreferences() {
           {/* Max hours */}
           <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-6">
             <h3 className="font-semibold text-gray-900 mb-1">Maximum study hours per day</h3>
-            <p className="text-sm text-gray-400 mb-4 hidden">I won't plan more than this many hours of studying per day.</p>
+            
             <div className="flex items-center gap-4">
               <Slider
                 value={[maxHours]}
@@ -167,7 +167,7 @@ export default function StudyPreferences() {
             <h3 className="font-semibold text-gray-900 mb-1 flex items-center gap-2">
               <Coffee className="w-4 h-4 text-amber-500" /> Break between study blocks
             </h3>
-            <p className="text-sm text-gray-400 mb-4 hidden">How long should breaks be between your study sessions?</p>
+            
             <div className="flex items-center gap-4">
               <Slider
                 value={[breakDuration]}
