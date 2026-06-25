@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { Calendar, BookOpen, BarChart3, RefreshCw, ArrowRight, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import ContextChat from '@/components/schedulo/ContextChat';
 
 const phases = [
@@ -16,9 +16,12 @@ const phases = [
 export default function Onboarding() {
   const navigate = useNavigate();
   const [showChat, setShowChat] = useState(false);
+  const [showTooltip, setShowTooltip] = useState(false);
 
   const handleStart = async () => {
     setShowChat(true);
+    setShowTooltip(true);
+    setTimeout(() => setShowTooltip(false), 5000);
     try {
       const plan = await base44.entities.StudyPlan.create({
         name: 'My Study Plan',
@@ -102,17 +105,32 @@ export default function Onboarding() {
       </motion.div>
 
       {showChat && (
-        <ContextChat
-          phase="onboarding"
-          planId={null}
-          autoOpen={true}
-          initialMessage="👋 Hi! I'm here if you have any questions while creating your study plan. Feel free to ask for help at any time."
-          suggestions={[
-            "How does Schedulo work?",
-            "What do I need to get started?",
-            "What is an .ics calendar file?"
-          ]}
-        />
+        <>
+          <AnimatePresence>
+            {showTooltip && (
+              <motion.div
+                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                className="fixed bottom-24 right-6 z-50 bg-white border border-blue-200 rounded-2xl shadow-xl p-4 max-w-xs"
+              >
+                <p className="text-sm text-gray-700 leading-relaxed">
+                  👋 Hi! Click here to chat with me if you have any questions while creating your study plan. I'm here to help.
+                </p>
+                <div className="absolute bottom-[-8px] right-8 w-4 h-4 bg-white border-r border-b border-blue-200 rotate-45" />
+              </motion.div>
+            )}
+          </AnimatePresence>
+          <ContextChat
+            phase="onboarding"
+            planId={null}
+            suggestions={[
+              "How does Schedulo work?",
+              "What do I need to get started?",
+              "What is an .ics calendar file?"
+            ]}
+          />
+        </>
       )}
     </div>
   );

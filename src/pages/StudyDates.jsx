@@ -25,7 +25,15 @@ function isCourse(type) {
   return type === 'course';
 }
 
-// Parse ICS and deduplicate recurring events — one entry per unique event name
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+function getDayOfWeek(dateStr) {
+  if (!dateStr) return 'Flexible';
+  const d = new Date(dateStr);
+  return isNaN(d.getTime()) ? 'Flexible' : DAY_NAMES[d.getDay()];
+}
+
+// Parse ICS and deduplicate recurring events — one entry per unique (name+time) combination
 function parseICS(text, startDate, endDate) {
   const lines = text.split(/\r?\n/);
   let current = null;
@@ -62,62 +70,37 @@ function parseICS(text, startDate, endDate) {
     }
   }
 
-  // Deduplicate: for recurring events, keep only one entry per name.
-  // For non-recurring, keep all that fall within the date range.
-  const recurringNames = new Map(); // name -> first occurrence entry
+  // Deduplicate: group by name+time key. Keep one entry per unique event pattern.
+  const seen = new Map(); // key -> first occurrence entry
   const nonRecurring = [];
 
   for (const ev of rawEvents) {
     const evDate = ev.date ? new Date(ev.date) : null;
+    const key = `${ev.name || ''}|${ev.start_time || ''}|${ev.end_time || ''}`;
+
     if (ev.is_recurring) {
-      const name = ev.name || 'Untitled';
-      if (!recurringNames.has(name)) {
-        recurringNames.set(name, ev);
-      } else {
-        // Track end date as the latest occurrence within range
-        const existing = recurringNames.get(name);
-        if (ev.date && (!existing.end_occurrence || ev.date > existing.end_occurrence)) {
-          existing.end_occurrence = ev.date;
-        }
+      if (!seen.has(key)) {
+        seen.set(key, { ...ev });
       }
     } else if (evDate && evDate >= start && evDate <= end) {
-      nonRecurring.push(ev);
+      // For non-recurring, also deduplicate by name+time if very similar
+      if (!seen.has(key)) {
+        seen.set(key, { ...ev, is_recurring: false });
+      }
     }
   }
 
-  const result = [];
-
-  // Add deduplicated recurring events
-  for (const [, ev] of recurringNames) {
-    result.push({
-      name: ev.name || 'Untitled Event',
-      type: guessType(ev.name || ''),
-      start_date: ev.date || '',
-      end_date: ev.end_occurrence || ev.date || '',
-      start_time: ev.start_time || '',
-      end_time: ev.end_time || '',
-      day_of_week: 'Flexible',
-      is_course: isCourse(guessType(ev.name || '')),
-      is_recurring: true
-    });
-  }
-
-  // Add non-recurring events
-  for (const ev of nonRecurring) {
-    result.push({
-      name: ev.name || 'Untitled Event',
-      type: guessType(ev.name || ''),
-      start_date: ev.date || '',
-      end_date: ev.date || '',
-      start_time: ev.start_time || '',
-      end_time: ev.end_time || '',
-      day_of_week: 'Flexible',
-      is_course: isCourse(guessType(ev.name || '')),
-      is_recurring: false
-    });
-  }
-
-  return result;
+  return Array.from(seen.values()).map(ev => ({
+    name: ev.name || 'Untitled Event',
+    type: guessType(ev.name || ''),
+    start_date: ev.date || '',
+    end_date: ev.date || '',
+    start_time: ev.start_time || '',
+    end_time: ev.end_time || '',
+    day_of_week: getDayOfWeek(ev.date),
+    is_course: isCourse(guessType(ev.name || '')),
+    is_recurring: !!ev.is_recurring
+  }));
 }
 
 const emptyManual = { name: '', type: 'commitment', start_date: '', end_date: '', start_time: '', end_time: '', day_of_week: 'Flexible' };
@@ -153,9 +136,9 @@ export default function StudyDates() {
       const text = await file.text();
       const parsed = parseICS(text, startDate || '2000-01-01', endDate || '2099-12-31');
       setEvents((prev) => {
-        // Merge: avoid duplicate names from recurring
-        const existingNames = new Set(prev.filter(e => e.is_recurring).map(e => e.name));
-        const newEvents = parsed.filter(e => !e.is_recurring || !existingNames.has(e.name));
+        // Merge: avoid duplicates by name+time key
+        const existingKeys = new Set(prev.map(e => `${e.name}|${e.start_time}|${e.end_time}`));
+        const newEvents = parsed.filter(e => !existingKeys.has(`${e.name}|${e.start_time}|${e.end_time}`));
         return [...prev, ...newEvents];
       });
     } catch (err) {
@@ -408,55 +391,44 @@ export default function StudyDates() {
             </motion.div>
           )}
 
-          {/* Detected events table */}
+          {/* Detected events - card display */}
           {events.length > 0 && (
-            <div className="bg-white rounded-xl border border-blue-100 shadow-sm mb-6 overflow-hidden">
-              <div className="p-4 border-b border-blue-50">
-                <h3 className="font-semibold text-gray-900">{events.length} detected events</h3>
-                <p className="text-xs text-gray-400">Recurring events are grouped into one entry. Events marked as courses will appear in the next phase.</p>
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h3 className="font-semibold text-gray-900">{events.length} blocked time periods</h3>
+                  <p className="text-xs text-gray-400">Each entry is a unique event pattern. The planner will avoid scheduling study time during these periods.</p>
+                </div>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-gray-50 text-left text-xs text-gray-500 uppercase tracking-wider">
-                      <th className="px-4 py-3">Name</th>
-                      <th className="px-4 py-3">Type</th>
-                      <th className="px-4 py-3">Start</th>
-                      <th className="px-4 py-3">End</th>
-                      <th className="px-4 py-3">Time</th>
-                      <th className="px-4 py-3">Day</th>
-                      <th className="px-4 py-3"></th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {events.map((ev, i) => (
-                      <tr key={i} className="hover:bg-blue-50/50 transition-colors">
-                        <td className="px-4 py-3 font-medium text-gray-900">
-                          {ev.name}
-                          {ev.is_course && <span className="ml-2 text-blue-600 text-xs font-semibold bg-blue-50 px-1.5 py-0.5 rounded">Course</span>}
-                          {ev.is_recurring && <span className="ml-1 text-purple-600 text-xs bg-purple-50 px-1.5 py-0.5 rounded">Recurring</span>}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ev.type === 'course' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
-                            {ev.type}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{ev.start_date || ev.date || '—'}</td>
-                        <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{ev.end_date || ev.date || '—'}</td>
-                        <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
-                          {ev.start_time && ev.end_time ? `${ev.start_time}–${ev.end_time}` : ev.start_time || '—'}
-                        </td>
-                        <td className="px-4 py-3 text-gray-600">{ev.day_of_week || '—'}</td>
-                        <td className="px-4 py-3">
-                          <div className="flex gap-1">
-                            <button onClick={() => editEvent(i)} className="p-1 hover:bg-gray-100 rounded"><Edit2 className="w-3.5 h-3.5 text-gray-400" /></button>
-                            <button onClick={() => deleteEvent(i)} className="p-1 hover:bg-red-50 rounded"><Trash2 className="w-3.5 h-3.5 text-red-400" /></button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {events.map((ev, i) => (
+                  <div key={i} className={`bg-white rounded-xl border shadow-sm p-4 flex items-start justify-between gap-2 ${ev.is_course ? 'border-blue-200' : 'border-gray-200'}`}>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                        <span className="font-medium text-gray-900 truncate">{ev.name}</span>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium flex-shrink-0 ${ev.is_course ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
+                          {ev.is_course ? 'Course' : 'Commitment'}
+                        </span>
+                        {ev.is_recurring && <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-purple-50 text-purple-600 flex-shrink-0">Recurring</span>}
+                      </div>
+                      <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500">
+                        {ev.day_of_week && ev.day_of_week !== 'Flexible' && (
+                          <span>📅 {ev.day_of_week}</span>
+                        )}
+                        {ev.start_time && ev.end_time && (
+                          <span>🕐 {ev.start_time}–{ev.end_time}</span>
+                        )}
+                        {!ev.start_time && ev.start_date && (
+                          <span>📆 {ev.start_date}</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex gap-1 flex-shrink-0">
+                      <button onClick={() => editEvent(i)} className="p-1.5 hover:bg-gray-100 rounded-lg"><Edit2 className="w-3.5 h-3.5 text-gray-400" /></button>
+                      <button onClick={() => deleteEvent(i)} className="p-1.5 hover:bg-red-50 rounded-lg"><Trash2 className="w-3.5 h-3.5 text-red-400" /></button>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}

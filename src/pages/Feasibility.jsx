@@ -14,16 +14,10 @@ export default function Feasibility() {
   const navigate = useNavigate();
   const [checking, setChecking] = useState(false);
   const [result, setResult] = useState(null);
-  const [plan, setPlan] = useState(null);
 
   useEffect(() => {
-    loadPlan();
+    runCheck();
   }, [planId]);
-
-  const loadPlan = async () => {
-    const p = await base44.entities.StudyPlan.get(planId);
-    setPlan(p);
-  };
 
   const runCheck = async () => {
     setChecking(true);
@@ -142,17 +136,6 @@ export default function Feasibility() {
             title="Feasibility Check"
             description="I'll compare your total workload against your available study time, deadlines, and preferences to check if your plan is realistic."
           />
-
-          {!result && !checking && (
-            <div className="bg-white rounded-xl border border-blue-100 p-8 shadow-sm text-center mb-6">
-              <BarChart3 className="w-10 h-10 text-blue-400 mx-auto mb-3" />
-              <p className="text-gray-600 mb-1">Ready to analyze your study plan feasibility.</p>
-              <p className="text-sm text-gray-400 mb-4">I'll check workload, deadlines, available time, and potential conflicts.</p>
-              <Button onClick={runCheck} className="bg-blue-600 hover:bg-blue-700">
-                Run feasibility check
-              </Button>
-            </div>
-          )}
 
           {checking && (
             <div className="bg-white rounded-xl border border-blue-100 p-8 shadow-sm text-center mb-6">

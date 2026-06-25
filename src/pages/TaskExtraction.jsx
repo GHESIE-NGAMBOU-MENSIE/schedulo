@@ -41,18 +41,21 @@ export default function TaskExtraction() {
       });
       setTasks(grouped);
       setExtracted(true);
+    } else if (courseList.length > 0) {
+      // Auto-start extraction
+      extractTasksForCourses(courseList);
     }
   };
 
-  const extractTasks = async () => {
+  const extractTasksForCourses = async (courseList) => {
     setExtracting(true);
     const newTasks = {};
     const plan = await base44.entities.StudyPlan.get(planId);
 
-    for (const course of courses) {
-      const prompt = `You are a study planning assistant. Extract concrete study tasks from this course information.
+    for (const course of courseList) {
+      const prompt = `You are a study planning assistant. Generate specific, ranked study tasks for a student based on their course content.
 
-IMPORTANT: Today's planning reference date is 2026-04-01. Use this as "today" for all deadline and scheduling decisions.
+IMPORTANT: Today's planning reference date is 2026-04-01.
 
 Course: ${course.name}
 Type: ${(course.course_type || []).join(', ')}
@@ -63,23 +66,30 @@ Difficulty: ${course.difficulty || 'medium'}
 Familiarity: ${course.familiarity || 'medium'}
 Priority: ${course.priority || 'medium'}
 Study Period: ${plan.start_date} to ${plan.end_date}
-Course Materials/Syllabus: ${course.materials_text || 'No materials provided'}
+Course Content / Syllabus / Lecture Schedule:
+${course.materials_text || 'No materials provided'}
 
-Based on this information, generate 4-8 concrete study tasks. Each task should be specific and actionable.
+RULES FOR TASK GENERATION:
+1. Tasks must represent LEARNING ACTIONS the student performs: reading, revising, practicing, completing assignments.
+2. NEVER create tasks for passive events (e.g., "Attend lecture", "Go to class", "Watch guest talk"). Instead: "Review notes from lecture on X", "Revise material on X".
+3. If the syllabus lists weekly topics, create reading/revision tasks per topic in the correct order.
+4. If assignments or exams are mentioned, create preparation and submission tasks.
+5. ORDER tasks from first-to-complete to last — the list represents the recommended study sequence.
+6. Be specific: "Read Chapter 3: Sorting Algorithms", NOT "Study algorithms".
 
-For study time estimation, consider:
+For time estimation:
 - 1 credit point ≈ 25-30 hours total workload
-- Difficulty adjustment: easy=-20%, medium=0%, difficult=+30%
-- Familiarity adjustment: high=-20%, medium=0%, low=+25%
+- Difficulty: easy=-20%, medium=0%, difficult=+30%
+- Familiarity: high=-20%, medium=0%, low=+25%
 
-Return a JSON object with a "tasks" array, where each task has:
-- title (string, specific and actionable)
-- task_type (one of: reading, assignment, exercise, revision, test, project_work)
-- deadline (date string YYYY-MM-DD or null)
-- estimated_hours (number, realistic)
-- priority (low/medium/high)
-- dependencies (array of task titles this depends on, or empty array)
-- suggested_phase (string: "early semester", "mid semester", "before exam", "throughout")`;
+Return JSON with a "tasks" array ordered from first to last in the recommended study sequence. Each task:
+- title: specific learning action (e.g., "Read Week 1: Introduction to X", "Complete Assignment 2", "Revise Chapter 4 for exam")
+- task_type: one of reading, assignment, exercise, revision, test, project_work
+- deadline: YYYY-MM-DD or null
+- estimated_hours: realistic number
+- priority: low/medium/high
+- suggested_phase: "early semester" | "mid semester" | "before exam" | "throughout"
+- order: integer starting at 1 (position in recommended sequence)`;
 
       try {
         const result = await base44.integrations.Core.InvokeLLM({
@@ -97,35 +107,34 @@ Return a JSON object with a "tasks" array, where each task has:
                     deadline: { type: "string" },
                     estimated_hours: { type: "number" },
                     priority: { type: "string" },
-                    dependencies: { type: "array", items: { type: "string" } },
-                    suggested_phase: { type: "string" }
+                    suggested_phase: { type: "string" },
+                    order: { type: "number" }
                   }
                 }
               }
             }
-          }
+          },
+          model: 'claude_sonnet_4_6'
         });
 
-        const extracted = result.tasks || [];
-        const created = [];
-        for (const t of extracted) {
-          const record = await base44.entities.StudyTask.create({
-            plan_id: planId,
-            course_id: course.id,
-            course_name: course.name,
-            title: t.title,
-            task_type: TASK_TYPES.includes(t.task_type) ? t.task_type : 'reading',
-            deadline: t.deadline || null,
-            estimated_hours: t.estimated_hours || 2,
-            priority: ['low', 'medium', 'high'].includes(t.priority) ? t.priority : 'medium',
-            dependencies: t.dependencies || [],
-            suggested_phase: t.suggested_phase || '',
-            status: 'open',
-            confirmed: false
-          });
-          created.push(record);
-        }
-        newTasks[course.id] = created;
+        const extracted = (result.tasks || []).sort((a, b) => (a.order || 0) - (b.order || 0));
+        const toCreate = extracted.map(t => ({
+          plan_id: planId,
+          course_id: course.id,
+          course_name: course.name,
+          title: t.title,
+          task_type: TASK_TYPES.includes(t.task_type) ? t.task_type : 'reading',
+          deadline: t.deadline || null,
+          estimated_hours: t.estimated_hours || 2,
+          priority: ['low', 'medium', 'high'].includes(t.priority) ? t.priority : 'medium',
+          dependencies: [],
+          suggested_phase: t.suggested_phase || '',
+          status: 'open',
+          confirmed: false
+        }));
+
+        const created = await base44.entities.StudyTask.bulkCreate(toCreate);
+        newTasks[course.id] = Array.isArray(created) ? created : toCreate;
       } catch (e) {
         console.error(e);
         newTasks[course.id] = [];
@@ -136,6 +145,8 @@ Return a JSON object with a "tasks" array, where each task has:
     setExtracted(true);
     setExtracting(false);
   };
+
+  const extractTasks = () => extractTasksForCourses(courses);
 
   const updateTask = async (taskId, updates) => {
     await base44.entities.StudyTask.update(taskId, updates);
@@ -178,9 +189,9 @@ Return a JSON object with a "tasks" array, where each task has:
   };
 
   const confirmAll = async () => {
-    const allTasks = Object.values(tasks).flat();
-    for (const t of allTasks) {
-      await base44.entities.StudyTask.update(t.id, { confirmed: true });
+    const allTasks = Object.values(tasks).flat().filter(t => t.id);
+    if (allTasks.length > 0) {
+      await base44.entities.StudyTask.bulkUpdate(allTasks.map(t => ({ id: t.id, confirmed: true })));
     }
     await base44.entities.StudyPlan.update(planId, { phase: 'generation', step: 7 });
     navigate(`/plan/${planId}/feasibility`);
