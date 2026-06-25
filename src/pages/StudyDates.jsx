@@ -441,60 +441,30 @@ export default function StudyDates() {
                 <p className="text-xs text-gray-400">Click a badge to toggle its type</p>
               </div>
               <div className="space-y-2">
-                {events.map((ev, i) => {
-                  // Calculate duration in minutes
-                  let durationLabel = null;
-                  if (ev.start_time && ev.end_time) {
-                    const [sh, sm] = ev.start_time.split(':').map(Number);
-                    const [eh, em] = ev.end_time.split(':').map(Number);
-                    const mins = (eh * 60 + em) - (sh * 60 + sm);
-                    if (mins > 0) {
-                      const h = Math.floor(mins / 60);
-                      const m = mins % 60;
-                      durationLabel = h > 0 && m > 0 ? `${h}h ${m}m` : h > 0 ? `${h}h` : `${m}m`;
-                    }
-                  }
-                  const dayTime = [
-                    ev.day_of_week && ev.day_of_week !== 'Flexible' ? ev.day_of_week : null,
-                    ev.start_time && ev.end_time ? `${ev.start_time}–${ev.end_time}` : ev.start_time || null
-                  ].filter(Boolean).join(', ');
-
-                  return (
-                  <div key={i} className="bg-white rounded-xl border border-gray-100 px-4 py-3 shadow-sm flex items-center gap-4 hover:border-blue-200 transition-colors">
-                    {/* Type badge */}
-                    <button
-                      onClick={() => {
-                        const newType = ev.type === 'course' ? 'commitment' : 'course';
-                        setEvents((prev) => prev.map((e, idx) => idx === i ? { ...e, type: newType, is_course: newType === 'course' } : e));
-                      }}
-                      title="Click to toggle type"
-                      className={`flex-shrink-0 w-24 text-center px-2.5 py-1 rounded-lg text-xs font-semibold cursor-pointer transition-all hover:opacity-80 ${ev.type === 'course' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
-                      {ev.type === 'course' ? '📚 Course' : '📌 Commitment'}
-                    </button>
-
-                    {/* Name + time info */}
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-gray-900 truncate">{ev.name}</p>
-                      {dayTime && (
-                        <p className="text-xs text-gray-400 mt-0.5">{dayTime}</p>
-                      )}
+                {events.map((ev, i) => (
+                  <div key={i} className="bg-white rounded-xl border border-blue-100 px-4 py-3 shadow-sm flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="font-semibold text-gray-900 truncate">{ev.name}</span>
+                      <button
+                        onClick={() => {
+                          const newType = ev.type === 'course' ? 'commitment' : 'course';
+                          setEvents((prev) => prev.map((e, idx) => idx === i ? { ...e, type: newType, is_course: newType === 'course' } : e));
+                        }}
+                        className={`flex-shrink-0 px-2.5 py-0.5 rounded-full text-xs font-medium cursor-pointer transition-colors hover:opacity-80 ${ev.type === 'course' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
+                        {ev.type === 'course' ? 'Course' : 'Commitment'}
+                      </button>
                     </div>
-
-                    {/* Duration pill */}
-                    {durationLabel && (
-                      <span className="flex-shrink-0 text-xs font-medium bg-gray-100 text-gray-500 px-2.5 py-1 rounded-full">
-                        {durationLabel}
+                    <div className="flex items-center gap-3 flex-shrink-0">
+                      <span className="text-sm text-gray-400 whitespace-nowrap">
+                        {[ev.day_of_week && ev.day_of_week !== 'Flexible' ? ev.day_of_week : null, ev.start_time && ev.end_time ? `${ev.start_time}–${ev.end_time}` : ev.start_time || null].filter(Boolean).join(' · ') || '—'}
                       </span>
-                    )}
-
-                    {/* Actions */}
-                    <div className="flex gap-1 flex-shrink-0">
-                      <button onClick={() => editEvent(i)} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors" title="Edit"><Edit2 className="w-3.5 h-3.5 text-gray-400" /></button>
-                      <button onClick={() => deleteEvent(i)} className="p-1.5 hover:bg-red-50 rounded-lg transition-colors" title="Delete"><Trash2 className="w-3.5 h-3.5 text-red-400" /></button>
+                      <div className="flex gap-1">
+                        <button onClick={() => editEvent(i)} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"><Edit2 className="w-3.5 h-3.5 text-gray-400" /></button>
+                        <button onClick={() => deleteEvent(i)} className="p-1.5 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="w-3.5 h-3.5 text-red-400" /></button>
+                      </div>
                     </div>
                   </div>
-                  );
-                })}
+                ))}
               </div>
             </div>
           }
