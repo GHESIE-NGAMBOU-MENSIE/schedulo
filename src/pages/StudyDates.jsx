@@ -13,11 +13,18 @@ import { motion } from 'framer-motion';
 import { Progress } from '@/components/ui/progress';
 
 const EVENT_TYPES = ['commitment', 'course'];
-const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Flexible'];
+const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday', 'Flexible'];
+
+const COURSE_KEYWORDS = ['lecture', 'vorlesung', 'exercise', 'übung', 'tutorium', 'tutorial', 'seminar', 'lab', 'praktikum', 'course', 'kurs', 'class', 'module', 'vorlesung', 'algorithms', 'english', 'mathematics', 'physics', 'chemistry', 'biology', 'statistics', 'programming', 'database', 'networks', 'software', 'machine learning', 'calculus', 'algebra', 'analysis', 'informatik', 'wirtschaft', 'recht', 'medizin', 'psychologie'];
+const COMMITMENT_KEYWORDS = ['meeting', 'gym', 'sport', 'party', 'dinner', 'lunch', 'breakfast', 'appointment', 'doctor', 'dentist', 'haircut', 'shopping', 'vacation', 'holiday', 'travel', 'flight', 'train', 'bus', 'work', 'job', 'birthday', 'wedding', 'funeral', 'interview', 'call', 'zoom'];
 
 function guessType(name) {
   const n = name.toLowerCase();
-  if (n.includes('lecture') || n.includes('vorlesung') || n.includes('exercise') || n.includes('übung') || n.includes('tutorium') || n.includes('tutorial') || n.includes('seminar') || n.includes('lab')) return 'course';
+  if (COMMITMENT_KEYWORDS.some(k => n.includes(k))) return 'commitment';
+  if (COURSE_KEYWORDS.some(k => n.includes(k))) return 'course';
+  // Default: if it looks like a subject name (single/two words, capitalized), treat as course
+  const wordCount = name.trim().split(/\s+/).length;
+  if (wordCount <= 3) return 'course';
   return 'commitment';
 }
 
@@ -25,13 +32,37 @@ function isCourse(type) {
   return type === 'course';
 }
 
-// Parse ICS and deduplicate recurring events — one entry per unique event name
+const RRULE_DAYS = { MO: 'Monday', TU: 'Tuesday', WE: 'Wednesday', TH: 'Thursday', FR: 'Friday', SA: 'Saturday', SU: 'Sunday' };
+
+function parseDateVal(val) {
+  if (!val) return { date: '', time: '' };
+  const raw = val.split(':').pop();
+  if (raw.length === 8) return { date: `${raw.slice(0,4)}-${raw.slice(4,6)}-${raw.slice(6,8)}`, time: '' };
+  if (raw.length >= 15) return { date: `${raw.slice(0,4)}-${raw.slice(4,6)}-${raw.slice(6,8)}`, time: `${raw.slice(9,11)}:${raw.slice(11,13)}` };
+  return { date: '', time: '' };
+}
+
+function extractDayFromRrule(rrule) {
+  const m = rrule.match(/BYDAY=([A-Z,]+)/);
+  if (!m) return 'Flexible';
+  const days = m[1].split(',').map(d => RRULE_DAYS[d]).filter(Boolean);
+  return days.length === 1 ? days[0] : 'Flexible';
+}
+
+function extractUntilFromRrule(rrule) {
+  const m = rrule.match(/UNTIL=(\d{8})/);
+  if (!m) return '';
+  const v = m[1];
+  return `${v.slice(0,4)}-${v.slice(4,6)}-${v.slice(6,8)}`;
+}
+
+// Parse ICS and deduplicate recurring events — one entry per unique name
 function parseICS(text, startDate, endDate) {
-  const lines = text.split(/\r?\n/);
+  // Unfold folded lines (lines starting with space/tab continue previous)
+  const unfolded = text.replace(/\r?\n[ \t]/g, '');
+  const lines = unfolded.split(/\r?\n/);
   let current = null;
   const rawEvents = [];
-  const start = startDate ? new Date(startDate) : new Date('2000-01-01');
-  const end = endDate ? new Date(endDate) : new Date('2099-12-31');
 
   for (const line of lines) {
     if (line === 'BEGIN:VEVENT') {
@@ -40,42 +71,42 @@ function parseICS(text, startDate, endDate) {
       rawEvents.push(current);
       current = null;
     } else if (current) {
-      if (line.startsWith('SUMMARY:')) current.name = line.slice(8).trim();
-      else if (line.startsWith('DTSTART')) {
-        const val = line.split(':').pop();
-        if (val.length === 8) {
-          current.date = `${val.slice(0, 4)}-${val.slice(4, 6)}-${val.slice(6, 8)}`;
-          current.start_time = '';
-          current.end_time = '';
-        } else if (val.length >= 15) {
-          current.date = `${val.slice(0, 4)}-${val.slice(4, 6)}-${val.slice(6, 8)}`;
-          current.start_time = `${val.slice(9, 11)}:${val.slice(11, 13)}`;
-        }
-      } else if (line.startsWith('DTEND')) {
-        const val = line.split(':').pop();
-        if (val.length >= 15) {
-          current.end_time = `${val.slice(9, 11)}:${val.slice(11, 13)}`;
-        }
-      } else if (line.startsWith('RRULE:')) {
+      const colonIdx = line.indexOf(':');
+      if (colonIdx === -1) continue;
+      const key = line.slice(0, colonIdx);
+      const val = line.slice(colonIdx + 1).trim();
+
+      if (key === 'SUMMARY') current.name = val;
+      else if (key === 'DESCRIPTION') current.description = val;
+      else if (key.startsWith('DTSTART')) {
+        const { date, time } = parseDateVal(line);
+        current.date = date;
+        current.start_time = time;
+      } else if (key.startsWith('DTEND')) {
+        const { time } = parseDateVal(line);
+        current.end_time = time;
+      } else if (key === 'RRULE') {
         current.is_recurring = true;
+        current.rrule_day = extractDayFromRrule(val);
+        current.rrule_until = extractUntilFromRrule(val);
       }
     }
   }
 
-  // Deduplicate: for recurring events, keep only one entry per name.
-  // For non-recurring, keep all that fall within the date range.
-  const recurringNames = new Map(); // name -> first occurrence entry
+  // Deduplicate recurring by name; collect non-recurring
+  const recurringMap = new Map();
   const nonRecurring = [];
+  const start = startDate ? new Date(startDate) : new Date('2000-01-01');
+  const end = endDate ? new Date(endDate) : new Date('2099-12-31');
 
   for (const ev of rawEvents) {
     const evDate = ev.date ? new Date(ev.date) : null;
     if (ev.is_recurring) {
       const name = ev.name || 'Untitled';
-      if (!recurringNames.has(name)) {
-        recurringNames.set(name, ev);
+      if (!recurringMap.has(name)) {
+        recurringMap.set(name, { ...ev });
       } else {
-        // Track end date as the latest occurrence within range
-        const existing = recurringNames.get(name);
+        const existing = recurringMap.get(name);
         if (ev.date && (!existing.end_occurrence || ev.date > existing.end_occurrence)) {
           existing.end_occurrence = ev.date;
         }
@@ -86,37 +117,36 @@ function parseICS(text, startDate, endDate) {
   }
 
   const result = [];
-
-  // Add deduplicated recurring events
-  for (const [, ev] of recurringNames) {
+  for (const [, ev] of recurringMap) {
+    const type = guessType(ev.name || '');
     result.push({
       name: ev.name || 'Untitled Event',
-      type: guessType(ev.name || ''),
+      description: ev.description || '',
+      type,
       start_date: ev.date || '',
-      end_date: ev.end_occurrence || ev.date || '',
+      end_date: ev.rrule_until || ev.end_occurrence || ev.date || '',
       start_time: ev.start_time || '',
       end_time: ev.end_time || '',
-      day_of_week: 'Flexible',
-      is_course: isCourse(guessType(ev.name || '')),
+      day_of_week: ev.rrule_day || 'Flexible',
+      is_course: isCourse(type),
       is_recurring: true
     });
   }
-
-  // Add non-recurring events
   for (const ev of nonRecurring) {
+    const type = guessType(ev.name || '');
     result.push({
       name: ev.name || 'Untitled Event',
-      type: guessType(ev.name || ''),
+      description: ev.description || '',
+      type,
       start_date: ev.date || '',
       end_date: ev.date || '',
       start_time: ev.start_time || '',
       end_time: ev.end_time || '',
-      day_of_week: 'Flexible',
-      is_course: isCourse(guessType(ev.name || '')),
+      day_of_week: ev.rrule_day || 'Flexible',
+      is_course: isCourse(type),
       is_recurring: false
     });
   }
-
   return result;
 }
 
@@ -252,7 +282,7 @@ export default function StudyDates() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
-      <PhaseIndicator currentPhase="setup" currentStep={1} />
+      <PhaseIndicator currentPhase="setup" currentStep={1} planId={planId} />
       <div className="max-w-3xl mx-auto px-4 py-8">
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
           <StepHeader
@@ -417,7 +447,7 @@ export default function StudyDates() {
             <div className="bg-white rounded-xl border border-blue-100 shadow-sm mb-6 overflow-hidden">
               <div className="p-4 border-b border-blue-50">
                 <h3 className="font-semibold text-gray-900">{events.length} detected events</h3>
-                <p className="text-xs text-gray-400">Recurring events are grouped into one entry. Events marked as courses will appear in the next phase.</p>
+                <p className="text-xs text-gray-400">Recurring events are shown once. Click the type badge to toggle between Course and Commitment.</p>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -425,10 +455,10 @@ export default function StudyDates() {
                     <tr className="bg-gray-50 text-left text-xs text-gray-500 uppercase tracking-wider">
                       <th className="px-4 py-3">Name</th>
                       <th className="px-4 py-3">Type</th>
+                      <th className="px-4 py-3">Day</th>
+                      <th className="px-4 py-3">Time</th>
                       <th className="px-4 py-3">Start</th>
                       <th className="px-4 py-3">End</th>
-                      <th className="px-4 py-3">Time</th>
-                      <th className="px-4 py-3">Day</th>
                       <th className="px-4 py-3"></th>
                     </tr>
                   </thead>
@@ -437,20 +467,26 @@ export default function StudyDates() {
                       <tr key={i} className="hover:bg-blue-50/50 transition-colors">
                         <td className="px-4 py-3 font-medium text-gray-900">
                           {ev.name}
-                          {ev.is_course && <span className="ml-2 text-blue-600 text-xs font-semibold bg-blue-50 px-1.5 py-0.5 rounded">Course</span>}
                           {ev.is_recurring && <span className="ml-1 text-purple-600 text-xs bg-purple-50 px-1.5 py-0.5 rounded">Recurring</span>}
                         </td>
                         <td className="px-4 py-3">
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ev.type === 'course' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
-                            {ev.type}
-                          </span>
+                          <button
+                            onClick={() => {
+                              const newType = ev.type === 'course' ? 'commitment' : 'course';
+                              setEvents(prev => prev.map((e, idx) => idx === i ? { ...e, type: newType, is_course: newType === 'course' } : e));
+                            }}
+                            title="Click to toggle type"
+                            className={`px-2 py-0.5 rounded-full text-xs font-medium cursor-pointer transition-colors hover:opacity-80 ${ev.type === 'course' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}
+                          >
+                            {ev.type === 'course' ? 'Course' : 'Commitment'}
+                          </button>
                         </td>
-                        <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{ev.start_date || ev.date || '—'}</td>
-                        <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{ev.end_date || ev.date || '—'}</td>
+                        <td className="px-4 py-3 text-gray-600">{ev.day_of_week && ev.day_of_week !== 'Flexible' ? ev.day_of_week : '—'}</td>
                         <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
                           {ev.start_time && ev.end_time ? `${ev.start_time}–${ev.end_time}` : ev.start_time || '—'}
                         </td>
-                        <td className="px-4 py-3 text-gray-600">{ev.day_of_week || '—'}</td>
+                        <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{ev.start_date || ev.date || '—'}</td>
+                        <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{ev.end_date || ev.date || '—'}</td>
                         <td className="px-4 py-3">
                           <div className="flex gap-1">
                             <button onClick={() => editEvent(i)} className="p-1 hover:bg-gray-100 rounded"><Edit2 className="w-3.5 h-3.5 text-gray-400" /></button>
@@ -475,6 +511,13 @@ export default function StudyDates() {
             </Button>
           </div>
         </motion.div>
+      </div>
+      {/* Permanent helper banner */}
+      <div className="fixed bottom-24 right-6 z-40 max-w-xs">
+        <div className="bg-blue-600 text-white text-sm px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2 cursor-pointer hover:bg-blue-700 transition-colors" onClick={() => document.querySelector('[data-chat-toggle]')?.click()}>
+          <span>👋</span>
+          <span>Hi! Click the chat button below if you have any questions while creating your study plan.</span>
+        </div>
       </div>
       <ContextChat phase="dates" planId={planId} suggestions={[
         "What should I upload here?",

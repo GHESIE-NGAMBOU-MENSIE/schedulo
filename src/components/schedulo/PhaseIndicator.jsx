@@ -8,8 +8,15 @@ const phases = [
   { key: 'active', label: 'Active Semester', steps: [9, 10, 11] },
 ];
 
-export default function PhaseIndicator({ currentPhase, currentStep }) {
+export default function PhaseIndicator({ currentPhase, currentStep, planId }) {
   const phaseIndex = phases.findIndex(p => p.key === currentPhase);
+
+  const phaseRoutes = {
+    setup: planId ? `/plan/${planId}/dates` : null,
+    courses: planId ? `/plan/${planId}/courses` : null,
+    generation: planId ? `/plan/${planId}/feasibility` : null,
+    active: planId ? `/plan/${planId}/active` : null,
+  };
 
   return (
     <div className="w-full px-4 py-3 bg-white/80 backdrop-blur-sm border-b border-blue-100">
@@ -18,20 +25,26 @@ export default function PhaseIndicator({ currentPhase, currentStep }) {
           {phases.map((phase, idx) => {
             const isCompleted = idx < phaseIndex;
             const isCurrent = idx === phaseIndex;
+            const isClickable = planId && (isCompleted || isCurrent);
+            const route = phaseRoutes[phase.key];
             return (
               <React.Fragment key={phase.key}>
-                <div className="flex items-center gap-2">
+                <div
+                  className={`flex items-center gap-2 ${isClickable ? 'cursor-pointer group' : ''}`}
+                  onClick={() => isClickable && route && (window.location.href = route)}
+                  title={isClickable ? `Go to ${phase.label}` : undefined}
+                >
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-all duration-300 ${
                     isCompleted 
-                      ? 'bg-emerald-500 text-white' 
+                      ? 'bg-emerald-500 text-white group-hover:bg-emerald-600' 
                       : isCurrent 
                         ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' 
                         : 'bg-gray-100 text-gray-400'
                   }`}>
                     {isCompleted ? <Check className="w-4 h-4" /> : idx + 1}
                   </div>
-                  <span className={`text-sm font-medium hidden sm:block ${
-                    isCurrent ? 'text-blue-700' : isCompleted ? 'text-emerald-600' : 'text-gray-400'
+                  <span className={`text-sm font-medium hidden sm:block transition-colors ${
+                    isCurrent ? 'text-blue-700' : isCompleted ? 'text-emerald-600 group-hover:text-emerald-700' : 'text-gray-400'
                   }`}>
                     {phase.label}
                   </span>

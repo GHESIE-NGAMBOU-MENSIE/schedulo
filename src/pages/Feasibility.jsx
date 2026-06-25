@@ -138,7 +138,7 @@ export default function Feasibility() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
-      <PhaseIndicator currentPhase="generation" currentStep={7} />
+      <PhaseIndicator currentPhase="generation" currentStep={7} planId={planId} />
       <div className="max-w-3xl mx-auto px-4 py-8">
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
           <StepHeader

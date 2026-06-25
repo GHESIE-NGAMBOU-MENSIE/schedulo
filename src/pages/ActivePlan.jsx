@@ -101,7 +101,7 @@ export default function ActivePlan() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
-      <PhaseIndicator currentPhase="active" currentStep={9} />
+      <PhaseIndicator currentPhase="active" currentStep={9} planId={planId} />
       <div className="max-w-6xl mx-auto px-4 py-8">
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
           <div className="flex items-center justify-between mb-6">
@@ -137,6 +137,9 @@ export default function ActivePlan() {
 
           {/* Quick actions */}
           <div className="flex flex-wrap gap-2 mb-4">
+            <Button variant="ghost" size="sm" onClick={() => navigate(`/plan/${planId}/generate`)}>
+              <ChevronLeft className="w-4 h-4 mr-1" /> Back to Plan
+            </Button>
             <Button variant={view === 'calendar' ? 'default' : 'outline'} size="sm" onClick={() => setView('calendar')}>
               <Calendar className="w-4 h-4 mr-1" /> Calendar
             </Button>
