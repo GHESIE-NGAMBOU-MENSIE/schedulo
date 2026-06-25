@@ -15,9 +15,58 @@ import { Progress } from '@/components/ui/progress';
 const EVENT_TYPES = ['commitment', 'course'];
 const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Flexible'];
 
+// Academic subjects and course-related keywords that indicate a course
+const COURSE_KEYWORDS = [
+  // Event-type keywords
+  'lecture', 'vorlesung', 'exercise', 'übung', 'tutorium', 'tutorial', 'seminar', 'lab', 'praktikum',
+  'kurs', 'course', 'module', 'unit', 'class', 'workshop',
+  // Common academic subjects (English + German)
+  'mathematics', 'math', 'maths', 'mathematik',
+  'algorithms', 'algorithmen',
+  'databases', 'datenbanken',
+  'software engineering', 'softwaretechnik',
+  'english', 'deutsch', 'french', 'spanish', 'linguistics', 'language',
+  'physics', 'physik', 'chemistry', 'chemie', 'biology', 'biologie',
+  'statistics', 'statistik', 'probability',
+  'programming', 'programmierung',
+  'networks', 'netzwerke', 'networking',
+  'operating systems', 'betriebssysteme',
+  'machine learning', 'deep learning', 'artificial intelligence',
+  'computer science', 'informatik',
+  'economics', 'volkswirtschaft', 'betriebswirtschaft',
+  'psychology', 'psychologie',
+  'history', 'geschichte',
+  'philosophy', 'philosophie',
+  'literature', 'literatur',
+  'accounting', 'buchhaltung',
+  'management', 'marketing',
+  'calculus', 'analysis', 'algebra', 'geometry',
+  'logic', 'logik',
+  'ethics', 'ethik',
+  'law', 'recht',
+  'architecture', 'architektur',
+];
+
+// Keywords that clearly indicate a non-course commitment
+const COMMITMENT_KEYWORDS = [
+  'doctor', 'arzt', 'zahnarzt', 'dentist', 'appointment', 'termin',
+  'gym', 'fitness', 'sport', 'training', 'workout',
+  'meeting', 'besprechung',
+  'party', 'birthday', 'geburtstag',
+  'shopping', 'errands',
+  'work', 'job', 'arbeit', 'shift',
+  'student association', 'fachschaft', 'asta',
+  'personal', 'private',
+  'vacation', 'urlaub', 'holiday',
+  'travel', 'reise',
+];
+
 function guessType(name) {
   const n = name.toLowerCase();
-  if (n.includes('lecture') || n.includes('vorlesung') || n.includes('exercise') || n.includes('übung') || n.includes('tutorium') || n.includes('tutorial') || n.includes('seminar') || n.includes('lab')) return 'course';
+  // Check commitment keywords first (more specific)
+  if (COMMITMENT_KEYWORDS.some(kw => n.includes(kw))) return 'commitment';
+  // Check course keywords
+  if (COURSE_KEYWORDS.some(kw => n.includes(kw))) return 'course';
   return 'commitment';
 }
 
@@ -444,7 +493,7 @@ export default function StudyDates() {
           </div>
         </motion.div>
       </div>
-      <ContextChat phase="dates" planId={planId} suggestions={[
+      <ContextChat phase="dates" planId={planId} persistentTooltip suggestions={[
         "What should I upload here?",
         "What is an .ics file?",
         "How do I add events manually?"

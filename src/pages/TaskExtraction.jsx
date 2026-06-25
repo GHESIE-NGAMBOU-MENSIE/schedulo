@@ -5,6 +5,7 @@ import { ListChecks, ArrowRight, ArrowLeft, Loader2, Edit2, Check, Trash2, Plus 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import PhaseIndicator from '@/components/schedulo/PhaseIndicator';
 import StepHeader from '@/components/schedulo/StepHeader';
@@ -20,6 +21,7 @@ export default function TaskExtraction() {
   const [tasks, setTasks] = useState({});
   const [extracting, setExtracting] = useState(false);
   const [extracted, setExtracted] = useState(false);
+  const [extractProgress, setExtractProgress] = useState(0);
   const [editTask, setEditTask] = useState(null);
   const [activeCourse, setActiveCourse] = useState(0);
   const [showAddTask, setShowAddTask] = useState(false);
@@ -42,54 +44,49 @@ export default function TaskExtraction() {
       setTasks(grouped);
       setExtracted(true);
     } else if (courseList.length > 0) {
-      // Auto-start extraction
       extractTasksForCourses(courseList);
     }
   };
 
+  const buildFallbackTasks = (course) => [
+    { title: `Review lecture notes — ${course.name}`, task_type: 'reading', estimated_hours: 2, priority: 'medium', suggested_phase: 'early semester' },
+    { title: `Read assigned material — ${course.name}`, task_type: 'reading', estimated_hours: 3, priority: 'medium', suggested_phase: 'early semester' },
+    { title: `Complete exercises — ${course.name}`, task_type: 'exercise', estimated_hours: 2, priority: 'medium', suggested_phase: 'mid semester' },
+    { title: `Practice and revise key concepts — ${course.name}`, task_type: 'revision', estimated_hours: 2, priority: 'high', suggested_phase: 'mid semester' },
+    { title: `Revision and exam preparation — ${course.name}`, task_type: 'revision', estimated_hours: 4, priority: 'high', suggested_phase: 'before exam', deadline: course.exam_date || null },
+  ];
+
   const extractTasksForCourses = async (courseList) => {
     setExtracting(true);
-    const newTasks = {};
+    setExtractProgress(0);
     const plan = await base44.entities.StudyPlan.get(planId);
+    const newTasks = {};
 
-    for (const course of courseList) {
-      const prompt = `You are a study planning assistant. Generate specific, ranked study tasks for a student based on their course content.
-
-IMPORTANT: Today's planning reference date is 2026-04-01.
+    const extractForCourse = async (course) => {
+      const prompt = `You are a study planning assistant. Generate specific, ranked study tasks for a student.
 
 Course: ${course.name}
 Type: ${(course.course_type || []).join(', ')}
 Credit Points: ${course.credit_points || 'unknown'}
-Exam Date: ${course.exam_date || 'unknown'}
-Description: ${course.description || 'No description'}
+Exam Date: ${course.exam_date || 'none'}
+Description: ${course.description || 'none'}
 Difficulty: ${course.difficulty || 'medium'}
 Familiarity: ${course.familiarity || 'medium'}
-Priority: ${course.priority || 'medium'}
 Study Period: ${plan.start_date} to ${plan.end_date}
-Course Content / Syllabus / Lecture Schedule:
-${course.materials_text || 'No materials provided'}
+Syllabus/Materials:
+${course.materials_text || 'No materials — generate reasonable generic tasks for this subject.'}
 
-RULES FOR TASK GENERATION:
-1. Tasks must represent LEARNING ACTIONS the student performs: reading, revising, practicing, completing assignments.
-2. NEVER create tasks for passive events (e.g., "Attend lecture", "Go to class", "Watch guest talk"). Instead: "Review notes from lecture on X", "Revise material on X".
-3. If the syllabus lists weekly topics, create reading/revision tasks per topic in the correct order.
-4. If assignments or exams are mentioned, create preparation and submission tasks.
-5. ORDER tasks from first-to-complete to last — the list represents the recommended study sequence.
-6. Be specific: "Read Chapter 3: Sorting Algorithms", NOT "Study algorithms".
+RULES:
+1. ALWAYS return at least 4 tasks — never return an empty list.
+2. Tasks = LEARNING ACTIONS: reading, revising, practicing, completing assignments. Never "Attend lecture".
+3. If syllabus has weekly topics, create one task per topic in order.
+4. If no materials, generate sensible generic tasks for a course named "${course.name}".
+5. Order tasks from first to last in recommended study sequence.
+6. Be specific: "Read Chapter 2: Binary Trees" not "Study algorithms".
 
-For time estimation:
-- 1 credit point ≈ 25-30 hours total workload
-- Difficulty: easy=-20%, medium=0%, difficult=+30%
-- Familiarity: high=-20%, medium=0%, low=+25%
+Time estimates: 1 credit ≈ 25h total. Difficulty easy=-20%, difficult=+30%. Familiarity high=-20%, low=+25%.
 
-Return JSON with a "tasks" array ordered from first to last in the recommended study sequence. Each task:
-- title: specific learning action (e.g., "Read Week 1: Introduction to X", "Complete Assignment 2", "Revise Chapter 4 for exam")
-- task_type: one of reading, assignment, exercise, revision, test, project_work
-- deadline: YYYY-MM-DD or null
-- estimated_hours: realistic number
-- priority: low/medium/high
-- suggested_phase: "early semester" | "mid semester" | "before exam" | "throughout"
-- order: integer starting at 1 (position in recommended sequence)`;
+Return JSON "tasks" array, each with: title, task_type (reading/assignment/exercise/revision/test/project_work), deadline (YYYY-MM-DD or null), estimated_hours, priority (low/medium/high), suggested_phase (early semester/mid semester/before exam/throughout), order (int).`;
 
       try {
         const result = await base44.integrations.Core.InvokeLLM({
@@ -117,8 +114,10 @@ Return JSON with a "tasks" array ordered from first to last in the recommended s
           model: 'claude_sonnet_4_6'
         });
 
-        const extracted = (result.tasks || []).sort((a, b) => (a.order || 0) - (b.order || 0));
-        const toCreate = extracted.map(t => ({
+        const sorted = (result.tasks || []).sort((a, b) => (a.order || 0) - (b.order || 0));
+        const taskData = sorted.length > 0 ? sorted : buildFallbackTasks(course);
+
+        const toCreate = taskData.map(t => ({
           plan_id: planId,
           course_id: course.id,
           course_name: course.name,
@@ -134,13 +133,37 @@ Return JSON with a "tasks" array ordered from first to last in the recommended s
         }));
 
         const created = await base44.entities.StudyTask.bulkCreate(toCreate);
-        newTasks[course.id] = Array.isArray(created) ? created : toCreate;
+        return { courseId: course.id, tasks: Array.isArray(created) ? created : toCreate };
       } catch (e) {
         console.error(e);
-        newTasks[course.id] = [];
+        const fallback = buildFallbackTasks(course).map(t => ({
+          plan_id: planId, course_id: course.id, course_name: course.name,
+          title: t.title, task_type: t.task_type, deadline: t.deadline || null,
+          estimated_hours: t.estimated_hours, priority: t.priority,
+          suggested_phase: t.suggested_phase, status: 'open', confirmed: false, dependencies: []
+        }));
+        try {
+          const created = await base44.entities.StudyTask.bulkCreate(fallback);
+          return { courseId: course.id, tasks: Array.isArray(created) ? created : fallback };
+        } catch (_) {
+          return { courseId: course.id, tasks: [] };
+        }
       }
-    }
+    };
 
+    // Run all courses in parallel, update progress as each completes
+    let completed = 0;
+    const results = await Promise.all(
+      courseList.map(course =>
+        extractForCourse(course).then(res => {
+          completed++;
+          setExtractProgress(Math.round((completed / courseList.length) * 100));
+          return res;
+        })
+      )
+    );
+
+    results.forEach(({ courseId, tasks: t }) => { newTasks[courseId] = t; });
     setTasks(newTasks);
     setExtracted(true);
     setExtracting(false);
@@ -215,10 +238,14 @@ Return JSON with a "tasks" array ordered from first to last in the recommended s
           {!extracted && (
             <div className="bg-white rounded-xl border border-blue-100 p-8 shadow-sm text-center mb-6">
               {extracting ? (
-                <div className="space-y-3">
+                <div className="space-y-4">
                   <Loader2 className="w-10 h-10 animate-spin text-blue-500 mx-auto" />
                   <p className="text-gray-600 font-medium">Analyzing your courses and extracting tasks...</p>
-                  <p className="text-sm text-gray-400">This may take a moment.</p>
+                  <p className="text-sm text-gray-400">All courses are processed in parallel — won't take long!</p>
+                  <div className="max-w-xs mx-auto space-y-1">
+                    <Progress value={extractProgress} className="h-2" />
+                    <p className="text-xs text-gray-400 text-right">{extractProgress}%</p>
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -251,6 +278,10 @@ Return JSON with a "tasks" array ordered from first to last in the recommended s
                     <p className="text-xs text-blue-500">Courses</p>
                   </div>
                 </div>
+                <Button variant="outline" size="sm" onClick={extractTasks} disabled={extracting}>
+                  {extracting ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+                  Re-extract
+                </Button>
               </div>
 
               {/* Course tabs */}
@@ -272,7 +303,7 @@ Return JSON with a "tasks" array ordered from first to last in the recommended s
               <div className="space-y-3 mb-6">
                 {currentTasks.map((task, i) => (
                   <motion.div
-                    key={task.id}
+                    key={task.id || i}
                     initial={{ opacity: 0, y: 5 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: i * 0.03 }}

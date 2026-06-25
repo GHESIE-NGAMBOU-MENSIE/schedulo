@@ -18,8 +18,9 @@ const phaseContexts = {
   export: "You are on the export screen. Help users save, export, and archive their study plans."
 };
 
-export default function ContextChat({ phase, planId, suggestions, initialMessage, autoOpen }) {
+export default function ContextChat({ phase, planId, suggestions, initialMessage, autoOpen, persistentTooltip }) {
   const [open, setOpen] = useState(!!autoOpen);
+  const [tooltipDismissed, setTooltipDismissed] = useState(false);
   const [messages, setMessages] = useState(
     initialMessage
       ? [{ role: 'assistant', content: initialMessage }]
@@ -71,12 +72,27 @@ Respond helpfully, concisely, and in a friendly tone. Use short paragraphs. If y
 
   if (!open) {
     return (
-      <button
-        onClick={() => setOpen(true)}
-        className="fixed bottom-6 right-6 z-50 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-xl shadow-blue-200 flex items-center justify-center transition-all hover:scale-105"
-      >
-        <MessageCircle className="w-6 h-6" />
-      </button>
+      <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-2">
+        {persistentTooltip && !tooltipDismissed && (
+          <div className="flex items-end gap-2 max-w-[280px]">
+            <div className="bg-white border border-blue-200 rounded-2xl rounded-br-sm shadow-lg px-4 py-3 text-sm text-gray-700 relative">
+              <button
+                onClick={() => setTooltipDismissed(true)}
+                className="absolute top-1.5 right-1.5 text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+              <p className="pr-4">👋 Hi! Click here to chat with me if you have any questions while creating your study plan. I'm here to help.</p>
+            </div>
+          </div>
+        )}
+        <button
+          onClick={() => setOpen(true)}
+          className="w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-xl shadow-blue-200 flex items-center justify-center transition-all hover:scale-105"
+        >
+          <MessageCircle className="w-6 h-6" />
+        </button>
+      </div>
     );
   }
 
