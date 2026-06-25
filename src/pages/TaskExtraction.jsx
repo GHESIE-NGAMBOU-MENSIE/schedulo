@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
-import { ListChecks, ArrowRight, ArrowLeft, Loader2, Edit2, Check, Trash2, Plus } from 'lucide-react';
+import { ListChecks, ArrowRight, ArrowLeft, Loader2, Edit2, Check, Trash2, Plus, ChevronDown, ChevronUp, AlertTriangle, Bug } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,6 +13,94 @@ import ContextChat from '@/components/schedulo/ContextChat';
 import { motion } from 'framer-motion';
 
 const TASK_TYPES = ['reading', 'assignment', 'exercise', 'revision', 'test', 'project_work'];
+const IS_DEV = import.meta.env.DEV;
+
+// extraction_mode: 'ai_materials' | 'ai_description' | 'fallback'
+function getExtractionMode(course) {
+  if (course.materials_text && course.materials_text.trim().length > 20) return 'ai_materials';
+  if (course.description && course.description.trim().length > 10) return 'ai_description';
+  return 'fallback';
+}
+
+function ExtractionModeBadge({ mode }) {
+  if (mode === 'ai_materials') return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+      ✦ Extracted from course material
+    </span>
+  );
+  if (mode === 'ai_description') return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+      ✦ Generated from course description
+    </span>
+  );
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
+      ⚠ Generated from generic fallback
+    </span>
+  );
+}
+
+function FallbackWarning({ course }) {
+  return (
+    <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 text-sm text-amber-800">
+      <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0 text-amber-500" />
+      <span>
+        No course material was available for <strong>{course.name}</strong>, so Schedulo generated generic tasks.
+        Please <a href="#" onClick={e => { e.preventDefault(); window.history.back(); }} className="underline font-medium">add or paste course material</a> to get more specific tasks.
+      </span>
+    </div>
+  );
+}
+
+function DebugPanel({ courses, debugInfo, tasks }) {
+  const [open, setOpen] = useState(false);
+  if (!IS_DEV) return null;
+
+  return (
+    <div className="mb-6 border border-dashed border-purple-300 rounded-xl overflow-hidden">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-4 py-2.5 bg-purple-50 text-purple-700 text-sm font-medium hover:bg-purple-100 transition-colors"
+      >
+        <span className="flex items-center gap-2"><Bug className="w-4 h-4" /> Extraction Debug</span>
+        {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+      </button>
+      {open && (
+        <div className="bg-white divide-y divide-purple-50">
+          {courses.map(course => {
+            const info = debugInfo[course.id] || {};
+            const taskCount = (tasks[course.id] || []).length;
+            const hasMaterials = !!(course.materials_text && course.materials_text.trim().length > 20);
+            const hasDesc = !!(course.description && course.description.trim().length > 10);
+            const modeLabel = info.mode === 'ai_materials' ? 'AI extraction from materials'
+              : info.mode === 'ai_description' ? 'AI generation from description'
+              : info.mode === 'fallback' ? 'generic fallback'
+              : '—';
+
+            return (
+              <div key={course.id} className="px-4 py-3 text-xs font-mono space-y-1">
+                <p className="font-semibold text-purple-800 text-sm font-sans">{course.name}</p>
+                <p><span className="text-gray-500">description:</span> {hasDesc ? <span className="text-green-600">✓ exists</span> : <span className="text-red-500">✗ missing</span>}</p>
+                <p><span className="text-gray-500">materials_text:</span> {hasMaterials ? <span className="text-green-600">✓ exists</span> : <span className="text-red-500">✗ missing</span>}</p>
+                <p><span className="text-gray-500">materials length:</span> {course.materials_text ? course.materials_text.length : 0} chars</p>
+                {course.materials_text && (
+                  <p className="text-gray-400 break-all whitespace-pre-wrap">
+                    <span className="text-gray-500">preview: </span>"{course.materials_text.slice(0, 300)}{course.materials_text.length > 300 ? '…' : ''}"
+                  </p>
+                )}
+                <p><span className="text-gray-500">extraction mode:</span> <span className="text-purple-700 font-semibold">{modeLabel}</span></p>
+                <p><span className="text-gray-500">tasks generated:</span> {taskCount}</p>
+                {info.error && (
+                  <p className="text-red-600 bg-red-50 rounded p-1"><span className="text-gray-500">error:</span> {info.error}</p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function TaskExtraction() {
   const { planId } = useParams();
@@ -22,6 +110,7 @@ export default function TaskExtraction() {
   const [extracting, setExtracting] = useState(false);
   const [extracted, setExtracted] = useState(false);
   const [extractProgress, setExtractProgress] = useState(0);
+  const [debugInfo, setDebugInfo] = useState({}); // { [courseId]: { mode, error } }
   const [editTask, setEditTask] = useState(null);
   const [activeCourse, setActiveCourse] = useState(0);
   const [showAddTask, setShowAddTask] = useState(false);
@@ -42,9 +131,12 @@ export default function TaskExtraction() {
         if (grouped[t.course_id]) grouped[t.course_id].push(t);
       });
       setTasks(grouped);
+      // Reconstruct debug info from existing data (mode only, no errors)
+      const info = {};
+      courseList.forEach(c => { info[c.id] = { mode: getExtractionMode(c) }; });
+      setDebugInfo(info);
       setExtracted(true);
     }
-    // Don't auto-trigger — wait for user to click so plan data is fully ready
   };
 
   const buildFallbackTasks = (course) => [
@@ -60,8 +152,12 @@ export default function TaskExtraction() {
     setExtractProgress(0);
     const plan = await base44.entities.StudyPlan.get(planId);
     const newTasks = {};
+    const newDebug = {};
 
     const extractForCourse = async (course) => {
+      const mode = getExtractionMode(course);
+      newDebug[course.id] = { mode };
+
       const prompt = `You are a study planning assistant. Generate specific, ranked study tasks for a student.
 
 Course: ${course.name}
@@ -86,6 +182,18 @@ RULES:
 Time estimates: 1 credit ≈ 25h total. Difficulty easy=-20%, difficult=+30%. Familiarity high=-20%, low=+25%.
 
 Return JSON "tasks" array, each with: title, task_type (reading/assignment/exercise/revision/test/project_work), deadline (YYYY-MM-DD or null), estimated_hours, priority (low/medium/high), suggested_phase (early semester/mid semester/before exam/throughout), order (int).`;
+
+      if (mode === 'fallback') {
+        // Skip LLM entirely for true fallback — no materials or description
+        const fallbackData = buildFallbackTasks(course).map(t => ({
+          plan_id: planId, course_id: course.id, course_name: course.name,
+          title: t.title, task_type: t.task_type, deadline: t.deadline || null,
+          estimated_hours: t.estimated_hours, priority: t.priority,
+          suggested_phase: t.suggested_phase, status: 'open', confirmed: false, dependencies: []
+        }));
+        const created = await base44.entities.StudyTask.bulkCreate(fallbackData);
+        return { courseId: course.id, tasks: Array.isArray(created) ? created : fallbackData };
+      }
 
       try {
         const result = await base44.integrations.Core.InvokeLLM({
@@ -114,6 +222,10 @@ Return JSON "tasks" array, each with: title, task_type (reading/assignment/exerc
         });
 
         const sorted = (result.tasks || []).sort((a, b) => (a.order || 0) - (b.order || 0));
+        // If LLM returned nothing, fall back silently but record it
+        if (sorted.length === 0) {
+          newDebug[course.id] = { mode: 'fallback', error: 'LLM returned 0 tasks — fell back to generic' };
+        }
         const taskData = sorted.length > 0 ? sorted : buildFallbackTasks(course);
 
         const toCreate = taskData.map(t => ({
@@ -134,23 +246,23 @@ Return JSON "tasks" array, each with: title, task_type (reading/assignment/exerc
         const created = await base44.entities.StudyTask.bulkCreate(toCreate);
         return { courseId: course.id, tasks: Array.isArray(created) ? created : toCreate };
       } catch (e) {
-        console.error(e);
-        const fallback = buildFallbackTasks(course).map(t => ({
+        const errorMsg = e?.message || String(e);
+        newDebug[course.id] = { mode: 'fallback', error: errorMsg };
+        const fallbackData = buildFallbackTasks(course).map(t => ({
           plan_id: planId, course_id: course.id, course_name: course.name,
           title: t.title, task_type: t.task_type, deadline: t.deadline || null,
           estimated_hours: t.estimated_hours, priority: t.priority,
           suggested_phase: t.suggested_phase, status: 'open', confirmed: false, dependencies: []
         }));
         try {
-          const created = await base44.entities.StudyTask.bulkCreate(fallback);
-          return { courseId: course.id, tasks: Array.isArray(created) ? created : fallback };
+          const created = await base44.entities.StudyTask.bulkCreate(fallbackData);
+          return { courseId: course.id, tasks: Array.isArray(created) ? created : fallbackData };
         } catch (_) {
           return { courseId: course.id, tasks: [] };
         }
       }
     };
 
-    // Run all courses in parallel, update progress as each completes
     let completed = 0;
     const results = await Promise.all(
       courseList.map(course =>
@@ -164,16 +276,16 @@ Return JSON "tasks" array, each with: title, task_type (reading/assignment/exerc
 
     results.forEach(({ courseId, tasks: t }) => { newTasks[courseId] = t; });
     setTasks(newTasks);
+    setDebugInfo({ ...newDebug });
     setExtracted(true);
     setExtracting(false);
   };
 
   const extractTasks = async () => {
-    // Clear existing tasks for this plan first to avoid duplicates
     setExtracted(false);
     setTasks({});
+    setDebugInfo({});
     await base44.entities.StudyTask.deleteMany({ plan_id: planId });
-    // Re-fetch courses fresh to avoid stale state
     const freshCourses = await base44.entities.Course.filter({ plan_id: planId });
     setCourses(freshCourses);
     extractTasksForCourses(freshCourses);
@@ -230,6 +342,7 @@ Return JSON "tasks" array, each with: title, task_type (reading/assignment/exerc
 
   const currentCourse = courses[activeCourse];
   const currentTasks = currentCourse ? (tasks[currentCourse.id] || []) : [];
+  const currentMode = currentCourse ? (debugInfo[currentCourse.id]?.mode || getExtractionMode(currentCourse)) : null;
   const totalHours = Object.values(tasks).flat().reduce((sum, t) => sum + (t.estimated_hours || 0), 0);
 
   return (
@@ -292,6 +405,9 @@ Return JSON "tasks" array, each with: title, task_type (reading/assignment/exerc
                 </Button>
               </div>
 
+              {/* Debug panel (dev only) */}
+              <DebugPanel courses={courses} debugInfo={debugInfo} tasks={tasks} />
+
               {/* Course tabs */}
               <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
                 {courses.map((c, i) => (
@@ -306,6 +422,14 @@ Return JSON "tasks" array, each with: title, task_type (reading/assignment/exerc
                   </button>
                 ))}
               </div>
+
+              {/* Status badge + fallback warning for active course */}
+              {currentCourse && (
+                <div className="mb-4 space-y-2">
+                  <ExtractionModeBadge mode={currentMode} />
+                  {currentMode === 'fallback' && <FallbackWarning course={currentCourse} />}
+                </div>
+              )}
 
               {/* Tasks for active course */}
               <div className="space-y-3 mb-6">
