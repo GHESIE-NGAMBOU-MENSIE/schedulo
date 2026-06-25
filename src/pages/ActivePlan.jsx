@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { Calendar, List, Filter, CheckCircle, Circle, Clock, MessageCircle, Download, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { PLANNING_REFERENCE_DATE, PLANNING_REFERENCE_DATE_STR } from '@/lib/planningDate';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import PhaseIndicator from '@/components/schedulo/PhaseIndicator';
@@ -49,7 +50,7 @@ export default function ActivePlan() {
   };
 
   const getWeekDates = () => {
-    const now = new Date();
+    const now = new Date(PLANNING_REFERENCE_DATE);
     now.setDate(now.getDate() + weekOffset * 7);
     const startDay = now.getDay();
     const monday = new Date(now);
@@ -74,7 +75,7 @@ export default function ActivePlan() {
   const completedCount = tasks.filter(t => t.status === 'completed').length;
   const totalCount = tasks.length;
   const progress = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
-  const overdueCount = tasks.filter(t => t.deadline && new Date(t.deadline) < new Date() && t.status !== 'completed').length;
+  const overdueCount = tasks.filter(t => t.deadline && new Date(t.deadline) < PLANNING_REFERENCE_DATE && t.status !== 'completed').length;
 
   const typeColors = {
     reading: 'bg-blue-100 border-blue-300 text-blue-800',
@@ -169,9 +170,9 @@ export default function ActivePlan() {
                 <div className="grid grid-cols-8 border-b border-gray-100">
                   <div className="p-2"></div>
                   {weekDates.map((d, i) => (
-                    <div key={i} className={`p-2 text-center border-l border-gray-100 ${d.toDateString() === new Date().toDateString() ? 'bg-blue-50' : ''}`}>
+                    <div key={i} className={`p-2 text-center border-l border-gray-100 ${d.toDateString() === PLANNING_REFERENCE_DATE.toDateString() ? 'bg-blue-50' : ''}`}>
                       <p className="text-xs text-gray-400">{dayNames[i]}</p>
-                      <p className={`text-sm font-semibold ${d.toDateString() === new Date().toDateString() ? 'text-blue-600' : 'text-gray-700'}`}>{d.getDate()}</p>
+                      <p className={`text-sm font-semibold ${d.toDateString() === PLANNING_REFERENCE_DATE.toDateString() ? 'text-blue-600' : 'text-gray-700'}`}>{d.getDate()}</p>
                     </div>
                   ))}
                 </div>

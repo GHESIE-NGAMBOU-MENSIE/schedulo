@@ -52,6 +52,8 @@ export default function TaskExtraction() {
     for (const course of courses) {
       const prompt = `You are a study planning assistant. Extract concrete study tasks from this course information.
 
+IMPORTANT: Today's planning reference date is 2026-04-01. Use this as "today" for all deadline and scheduling decisions.
+
 Course: ${course.name}
 Type: ${(course.course_type || []).join(', ')}
 Credit Points: ${course.credit_points || 'unknown'}

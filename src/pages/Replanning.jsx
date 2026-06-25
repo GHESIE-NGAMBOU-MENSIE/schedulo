@@ -43,6 +43,8 @@ export default function Replanning() {
 
       const prompt = `You are Schedulo, a friendly AI study planning assistant helping a student re-plan their study schedule.
 
+IMPORTANT: Today's planning reference date is 2026-04-01. Use this as "today" for all scheduling and deadline calculations. Do not treat Summer Semester 2026 dates as past.
+
 Current Plan:
 Study Period: ${plan.start_date} to ${plan.end_date}
 Preferences: study days ${(prefs.preferred_days || []).join(', ')}, max ${prefs.max_hours || 6}h/day, ${prefs.preferred_start}-${prefs.preferred_end}
@@ -94,6 +96,8 @@ Keep responses concise but helpful. Use bullet points for clarity.`;
       const prefs = plan.preferences || {};
 
       const prompt = `The student accepted the re-planning proposal. Now generate updated schedule assignments.
+
+IMPORTANT: Today's planning reference date is 2026-04-01. Use this as "today".
 
 Current tasks:
 ${tasks.map(t => `- ID: ${t.id} | "${t.title}" (${t.course_name}) | ${t.estimated_hours}h | Priority: ${t.priority} | Deadline: ${t.deadline || 'none'} | Currently: ${t.scheduled_date} ${t.scheduled_start}-${t.scheduled_end}`).join('\n')}

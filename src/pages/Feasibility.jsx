@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { BarChart3, ArrowRight, ArrowLeft, AlertTriangle, CheckCircle, XCircle, Loader2, RefreshCw } from 'lucide-react';
+import { PLANNING_REFERENCE_DATE } from '@/lib/planningDate';
 import { Button } from '@/components/ui/button';
 import PhaseIndicator from '@/components/schedulo/PhaseIndicator';
 import StepHeader from '@/components/schedulo/StepHeader';
@@ -50,7 +51,7 @@ export default function Feasibility() {
     tasks.forEach(t => {
       if (t.deadline) {
         const dl = new Date(t.deadline);
-        const daysUntil = Math.ceil((dl - new Date()) / (1000 * 60 * 60 * 24));
+        const daysUntil = Math.ceil((dl - PLANNING_REFERENCE_DATE) / (1000 * 60 * 60 * 24));
         if (daysUntil < 3) deadlineIssues.push(`"${t.title}" deadline is in ${daysUntil} days — very tight!`);
         else if (daysUntil < 7) deadlineIssues.push(`"${t.title}" deadline is in ${daysUntil} days — plan to start soon.`);
       }

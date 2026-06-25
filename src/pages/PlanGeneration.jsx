@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { Calendar, List, ArrowLeft, Filter, CheckCircle, Clock, AlertCircle, Loader2, RotateCcw, RotateCw, Edit2, Check, X, Copy, GitCompare } from 'lucide-react';
+import { PLANNING_REFERENCE_DATE, PLANNING_REFERENCE_DATE_STR } from '@/lib/planningDate';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import PhaseIndicator from '@/components/schedulo/PhaseIndicator';
@@ -46,6 +47,8 @@ export default function PlanGeneration() {
     const calEvents = p.calendar_events || [];
 
     const prompt = `You are a study plan scheduler. Generate a time-blocked study schedule.
+
+IMPORTANT: Today's planning reference date is ${PLANNING_REFERENCE_DATE_STR}. Use this as "today" for all scheduling decisions. Do not treat any dates within the semester as past.
 
 Study Period: ${p.start_date} to ${p.end_date}
 Preferred Study Days: ${(prefs.preferred_days || []).join(', ')}
@@ -264,9 +267,9 @@ Return JSON with a "schedule" array where each item has:
                     <div className="grid grid-cols-8 border-b border-gray-100">
                       <div className="p-2 text-xs text-gray-400 text-center"></div>
                       {weekDates.map((d, i) => (
-                        <div key={i} className={`p-2 text-center border-l border-gray-100 ${d.toDateString() === new Date().toDateString() ? 'bg-blue-50' : ''}`}>
+                        <div key={i} className={`p-2 text-center border-l border-gray-100 ${d.toDateString() === PLANNING_REFERENCE_DATE.toDateString() ? 'bg-blue-50' : ''}`}>
                           <p className="text-xs text-gray-400">{dayNames[i]}</p>
-                          <p className={`text-sm font-semibold ${d.toDateString() === new Date().toDateString() ? 'text-blue-600' : 'text-gray-700'}`}>{d.getDate()}</p>
+                          <p className={`text-sm font-semibold ${d.toDateString() === PLANNING_REFERENCE_DATE.toDateString() ? 'text-blue-600' : 'text-gray-700'}`}>{d.getDate()}</p>
                         </div>
                       ))}
                     </div>
