@@ -1,43 +1,46 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
-import { Calendar, List, ArrowLeft, Filter, CheckCircle, Clock, AlertCircle, Loader2, RotateCcw, RotateCw, Edit2, Check, X, Copy, GitCompare } from 'lucide-react';
-import { PLANNING_REFERENCE_DATE, PLANNING_REFERENCE_DATE_STR } from '@/lib/planningDate';
+import { Calendar, List, ArrowLeft, Filter, CheckCircle, Clock, AlertCircle, Loader2, RotateCcw, Info, ChevronDown, ChevronUp } from 'lucide-react';
+import { PLANNING_REFERENCE_DATE } from '@/lib/planningDate';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import PhaseIndicator from '@/components/schedulo/PhaseIndicator';
 import StepHeader from '@/components/schedulo/StepHeader';
 import ContextChat from '@/components/schedulo/ContextChat';
+import { scheduleTasksEngine } from '@/lib/schedulerEngine';
 import { motion } from 'framer-motion';
 
-const HOUR_SLOTS = Array.from({ length: 14 }, (_, i) => i + 7); // 7am to 8pm
+const HOUR_SLOTS = Array.from({ length: 14 }, (_, i) => i + 7); // 7am–8pm
 
 export default function PlanGeneration() {
   const { planId } = useParams();
   const navigate = useNavigate();
   const [plan, setPlan] = useState(null);
   const [tasks, setTasks] = useState([]);
+  const [courses, setCourses] = useState([]);
   const [generating, setGenerating] = useState(false);
   const [generated, setGenerated] = useState(false);
   const [view, setView] = useState('calendar');
   const [filter, setFilter] = useState('all');
   const [weekOffset, setWeekOffset] = useState(0);
-  const [undoStack, setUndoStack] = useState([]);
-  const [redoStack, setRedoStack] = useState([]);
-  const [scenarios, setScenarios] = useState([]);
-  const [activeScenario, setActiveScenario] = useState(0);
-  const [showComparison, setShowComparison] = useState(false);
+  const [debugInfo, setDebugInfo] = useState(null);
+  const [showDebug, setShowDebug] = useState(false);
+  const [unscheduledTasks, setUnscheduledTasks] = useState([]);
 
   useEffect(() => { loadData(); }, [planId]);
 
   const loadData = async () => {
     try {
-      const p = await base44.entities.StudyPlan.get(planId);
+      const [p, t, c] = await Promise.all([
+        base44.entities.StudyPlan.get(planId),
+        base44.entities.StudyTask.filter({ plan_id: planId }),
+        base44.entities.Course.filter({ plan_id: planId })
+      ]);
       setPlan(p);
-      const t = await base44.entities.StudyTask.filter({ plan_id: planId });
       setTasks(t);
+      setCourses(c);
       if (t.some(task => task.scheduled_date)) setGenerated(true);
-      if (p.scenarios?.length) setScenarios(p.scenarios);
     } catch (e) {
       navigate('/');
     }
@@ -46,116 +49,75 @@ export default function PlanGeneration() {
   const generatePlan = async () => {
     setGenerating(true);
     try {
-      const p = await base44.entities.StudyPlan.get(planId);
-      const allTasks = await base44.entities.StudyTask.filter({ plan_id: planId });
+      const [p, allTasks, allCourses] = await Promise.all([
+        base44.entities.StudyPlan.get(planId),
+        base44.entities.StudyTask.filter({ plan_id: planId }),
+        base44.entities.Course.filter({ plan_id: planId })
+      ]);
+
       const prefs = p.preferences || {};
       const calEvents = p.calendar_events || [];
 
-      // Parse the per-day schedule structure stored in preferences
-      const daySchedule = prefs.schedule || {};
-      const studyDays = Object.entries(daySchedule)
-        .filter(([, v]) => !v.noStudy)
-        .map(([day]) => day);
-      const noStudyDays = Object.entries(daySchedule)
-        .filter(([, v]) => v.noStudy)
-        .map(([day]) => day);
-      // Use the first study day's window as the general window (they're typically the same)
-      const firstStudyDay = studyDays[0] ? daySchedule[studyDays[0]] : null;
-      const studyStart = firstStudyDay?.start || prefs.preferred_start || '09:00';
-      const studyEnd = firstStudyDay?.end || prefs.preferred_end || '18:00';
+      // Run rule-based engine
+      const result = scheduleTasksEngine(
+        allTasks,
+        calEvents,
+        allCourses,
+        prefs,
+        p.start_date,
+        p.end_date
+      );
 
-      const prompt = `You are a study plan scheduler. Generate a time-blocked study schedule.
+      const { scheduled, unscheduled, totalSlots, totalFreeMinutes } = result;
 
-IMPORTANT: Today's planning reference date is ${PLANNING_REFERENCE_DATE_STR}. Use this as "today" for all scheduling decisions. Schedule all tasks AFTER this date within the study period.
-
-Study Period: ${p.start_date} to ${p.end_date}
-Available Study Days (schedule ONLY on these days): ${studyDays.join(', ') || 'Tuesday, Wednesday, Thursday, Friday, Saturday'}
-No-study Days (never schedule on these): ${noStudyDays.join(', ') || 'Monday, Sunday'}
-Daily Study Window: ${studyStart} to ${studyEnd}
-Max Hours Per Day: ${prefs.max_hours || 6}
-Break Duration: ${prefs.break_duration || 15} minutes
-
-Fixed Calendar Events (blocked times — do not overlap):
-${calEvents.length > 0 ? calEvents.slice(0, 30).map(e => `- ${e.name}: ${e.start_date || e.date} ${e.start_time || ''}-${e.end_time || ''}`).join('\n') : 'None'}
-
-Tasks to schedule (use the exact task_id string):
-${allTasks.map(t => `- task_id: "${t.id}" | "${t.title}" (${t.course_name || 'General'}) | ${t.estimated_hours || 2}h | Priority: ${t.priority || 'medium'} | Deadline: ${t.deadline || 'end of semester'} | Type: ${t.task_type || 'reading'}`).join('\n')}
-
-Rules:
-1. Schedule EVERY task listed above — every task_id must appear in the schedule array.
-2. Only schedule on the Available Study Days listed above.
-3. Respect the daily study window (${studyStart}–${studyEnd}) and max ${prefs.max_hours || 6} hours/day.
-4. Split tasks > 3 hours into multiple blocks on different days.
-5. Prioritize by deadline proximity, then priority level.
-6. Distribute evenly across weeks — do not pile everything at the end.
-7. Use YYYY-MM-DD for dates and HH:MM (24h) for times.
-
-Return a JSON object with a "schedule" array. Each entry must have: task_id, scheduled_date, scheduled_start, scheduled_end, explanation.`;
-
-      const result = await base44.integrations.Core.InvokeLLM({
-        prompt,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            schedule: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  task_id: { type: "string" },
-                  scheduled_date: { type: "string" },
-                  scheduled_start: { type: "string" },
-                  scheduled_end: { type: "string" },
-                  explanation: { type: "string" }
-                },
-                required: ["task_id", "scheduled_date", "scheduled_start", "scheduled_end"]
-              }
-            }
-          },
-          required: ["schedule"]
-        },
-        model: 'claude_sonnet_4_6'
-      });
-
-      const schedule = result.schedule || [];
-      console.log(`AI returned ${schedule.length} scheduled blocks`);
-
-      // Validate and save each scheduled block
-      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-      const timeRegex = /^\d{2}:\d{2}$/;
+      // Save scheduled blocks to DB
       let savedCount = 0;
-
-      for (const item of schedule) {
-        if (!item.task_id || !item.scheduled_date || !item.scheduled_start || !item.scheduled_end) continue;
-        // Normalize time format (strip seconds if present e.g. "09:00:00" -> "09:00")
-        const normStart = item.scheduled_start.substring(0, 5);
-        const normEnd = item.scheduled_end.substring(0, 5);
-        if (!dateRegex.test(item.scheduled_date) || !timeRegex.test(normStart) || !timeRegex.test(normEnd)) {
-          console.warn('Invalid format, skipping:', item);
-          continue;
-        }
-        const task = allTasks.find(t => t.id === item.task_id);
-        if (task) {
-          await base44.entities.StudyTask.update(task.id, {
-            scheduled_date: item.scheduled_date,
-            scheduled_start: normStart,
-            scheduled_end: normEnd,
-            explanation: item.explanation || ''
-          });
-          savedCount++;
-        } else {
-          console.warn('No matching task for task_id:', item.task_id);
-        }
+      for (const block of scheduled) {
+        await base44.entities.StudyTask.update(block.task.id, {
+          scheduled_date: block.dateStr,
+          scheduled_start: block.startTime,
+          scheduled_end: block.endTime,
+          explanation: block.explanation
+        });
+        savedCount++;
       }
 
-      console.log(`Saved ${savedCount} scheduled blocks to database`);
+      // Clear scheduling from tasks that had dates before but weren't re-scheduled
+      // (covers re-generation: reset all first, then apply new schedule)
+      // We already overwrote matched ones; mark unscheduled ones explicitly
+      for (const u of unscheduled) {
+        await base44.entities.StudyTask.update(u.task.id, {
+          scheduled_date: null,
+          scheduled_start: null,
+          scheduled_end: null,
+          explanation: u.reason
+        });
+      }
 
       const updatedTasks = await base44.entities.StudyTask.filter({ plan_id: planId });
       setTasks(updatedTasks);
+      setUnscheduledTasks(unscheduled);
+
+      // Debug info
+      const withDate = updatedTasks.filter(t => t.scheduled_date);
+      const withStart = updatedTasks.filter(t => t.scheduled_start);
+      const withEnd = updatedTasks.filter(t => t.scheduled_end);
+      setDebugInfo({
+        totalExtracted: allTasks.length,
+        totalSlots,
+        totalFreeHours: Math.round(totalFreeMinutes / 60),
+        scheduledCount: savedCount,
+        unscheduledCount: unscheduled.length,
+        missingDate: allTasks.length - withDate.length,
+        missingStart: allTasks.length - withStart.length,
+        missingEnd: allTasks.length - withEnd.length,
+      });
+
       await base44.entities.StudyPlan.update(planId, {
-        scenarios: [{ name: 'Scenario 1', created: new Date().toISOString() }],
+        scenarios: [{ name: 'Plan 1', created: new Date().toISOString() }],
         step: 8
       });
+
       setGenerated(true);
     } catch (e) {
       console.error('Plan generation failed:', e);
@@ -165,11 +127,11 @@ Return a JSON object with a "schedule" array. Each entry must have: task_id, sch
 
   const getWeekDates = () => {
     if (!plan?.start_date) return [];
-    const start = new Date(plan.start_date);
+    const start = new Date(plan.start_date + 'T00:00:00');
     start.setDate(start.getDate() + weekOffset * 7);
-    const startDay = start.getDay();
+    const dow = start.getDay();
     const monday = new Date(start);
-    monday.setDate(start.getDate() - ((startDay + 6) % 7));
+    monday.setDate(start.getDate() - ((dow + 6) % 7));
     return Array.from({ length: 7 }, (_, i) => {
       const d = new Date(monday);
       d.setDate(monday.getDate() + i);
@@ -177,45 +139,50 @@ Return a JSON object with a "schedule" array. Each entry must have: task_id, sch
     });
   };
 
-  const getFilteredTasks = () => {
-    if (filter === 'study') return tasks.filter(t => t.scheduled_date);
-    if (filter === 'deadlines') return tasks.filter(t => t.deadline);
-    return tasks;
-  };
-
   const weekDates = getWeekDates();
   const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  const filteredTasks = getFilteredTasks();
 
-  const getTasksForDateAndHour = (date, hour) => {
-    const dateStr = date.toISOString().split('T')[0];
-    return filteredTasks.filter(t => {
-      if (t.scheduled_date !== dateStr) return false;
-      const startHour = parseInt(t.scheduled_start?.split(':')[0] || '0');
-      return startHour === hour;
+  const scheduledTasks = tasks.filter(t => t.scheduled_date && t.scheduled_start && t.scheduled_end);
+  const filteredTasks = filter === 'unscheduled'
+    ? tasks.filter(t => !t.scheduled_date)
+    : filter === 'scheduled'
+    ? scheduledTasks
+    : tasks;
+
+  const getTasksForCell = (date, hour) => {
+    const ds = date.toISOString().split('T')[0];
+    return scheduledTasks.filter(t => {
+      if (t.scheduled_date !== ds) return false;
+      return parseInt(t.scheduled_start?.split(':')[0] || '0') === hour;
     });
   };
 
-  const getEventsForDateAndHour = (date, hour) => {
+  const getEventsForCell = (date, hour) => {
     if (!plan?.calendar_events) return [];
-    const dateStr = date.toISOString().split('T')[0];
-    return plan.calendar_events.filter(e => {
-      if (e.date !== dateStr && e.recurrence !== 'weekly') return false;
-      if (e.recurrence === 'weekly') {
-        const eventDay = new Date(e.date).getDay();
-        if (date.getDay() !== eventDay) return false;
-      } else if (e.date !== dateStr) return false;
-      const startHour = parseInt(e.start_time?.split(':')[0] || '0');
-      return startHour === hour;
+    const ds = date.toISOString().split('T')[0];
+    return (plan.calendar_events || []).filter(ev => {
+      const evDate = ev.start_date || ev.date;
+      let matches = false;
+      if (ev.is_recurring || ev.recurrence === 'weekly') {
+        const anchor = new Date((evDate || '') + 'T00:00:00');
+        matches = !isNaN(anchor) && anchor.getDay() === date.getDay();
+      } else {
+        matches = evDate === ds;
+      }
+      if (!matches) return false;
+      return parseInt(ev.start_time?.split(':')[0] || '0') === hour;
     });
   };
+
+  const weekHasScheduledTasks = weekDates.some(d => {
+    const ds = d.toISOString().split('T')[0];
+    return scheduledTasks.some(t => t.scheduled_date === ds);
+  });
 
   const confirmPlan = async () => {
     await base44.entities.StudyPlan.update(planId, { status: 'active', phase: 'active', step: 9 });
-    for (const t of tasks) {
-      if (t.scheduled_date) {
-        await base44.entities.StudyTask.update(t.id, { confirmed: true });
-      }
+    for (const t of scheduledTasks) {
+      await base44.entities.StudyTask.update(t.id, { confirmed: true });
     }
     navigate(`/plan/${planId}/active`);
   };
@@ -237,21 +204,25 @@ Return a JSON object with a "schedule" array. Each entry must have: task_id, sch
           <StepHeader
             icon={Calendar}
             title="Your Study Plan"
-            description={generated ? "Review your generated study plan. You can edit, reschedule, or compare scenarios." : "I'll generate a time-blocked study schedule based on your tasks and preferences."}
+            description={generated
+              ? "Review your generated study plan. Tasks are placed in real calendar slots based on your schedule."
+              : "I'll build a context-aware study schedule by placing your tasks into the best available time slots."}
           />
 
+          {/* Generate / Loading state */}
           {!generated && (
             <div className="bg-white rounded-xl border border-blue-100 p-8 shadow-sm text-center mb-6">
               {generating ? (
                 <div className="space-y-3">
                   <Loader2 className="w-10 h-10 animate-spin text-blue-500 mx-auto" />
-                  <p className="text-gray-600 font-medium">Generating your personalized study plan...</p>
-                  <p className="text-sm text-gray-400">Distributing tasks, respecting deadlines and preferences.</p>
+                  <p className="text-gray-600 font-medium">Analyzing your calendar and scheduling tasks...</p>
+                  <p className="text-sm text-gray-400">Detecting free slots, connecting tasks to lectures and exercises.</p>
                 </div>
               ) : (
                 <div className="space-y-3">
                   <Calendar className="w-10 h-10 text-blue-400 mx-auto" />
-                  <p className="text-gray-600">Ready to generate your study plan.</p>
+                  <p className="text-gray-600">Ready to generate your context-aware study plan.</p>
+                  <p className="text-sm text-gray-400">{tasks.length} tasks will be placed into your real calendar slots.</p>
                   <Button onClick={generatePlan} className="bg-blue-600 hover:bg-blue-700">
                     Generate study plan
                   </Button>
@@ -260,8 +231,65 @@ Return a JSON object with a "schedule" array. Each entry must have: task_id, sch
             </div>
           )}
 
-          {generated && (
+          {generating && generated && (
+            <div className="bg-blue-50 rounded-xl p-4 mb-4 flex items-center gap-3">
+              <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
+              <span className="text-sm text-blue-700">Re-generating your study plan...</span>
+            </div>
+          )}
+
+          {generated && !generating && (
             <>
+              {/* Unscheduled warning */}
+              {unscheduledTasks.length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-sm font-semibold text-amber-800">
+                        {scheduledTasks.length} of {tasks.length} tasks scheduled — {unscheduledTasks.length} could not be placed
+                      </p>
+                      <ul className="mt-2 space-y-1">
+                        {unscheduledTasks.map((u, i) => (
+                          <li key={i} className="text-xs text-amber-700">
+                            <span className="font-medium">{u.task.title}</span>: {u.reason}
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="text-xs text-amber-600 mt-2">
+                        Suggestions: increase max daily hours, add more study days, or extend your study period.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Debug summary */}
+              {debugInfo && (
+                <div className="mb-4">
+                  <button
+                    onClick={() => setShowDebug(v => !v)}
+                    className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600"
+                  >
+                    <Info className="w-3.5 h-3.5" />
+                    Debug summary
+                    {showDebug ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                  </button>
+                  {showDebug && (
+                    <div className="mt-2 bg-gray-50 border border-gray-200 rounded-xl p-4 text-xs text-gray-600 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <div><p className="font-semibold text-gray-800">{debugInfo.totalExtracted}</p><p>Total tasks</p></div>
+                      <div><p className="font-semibold text-gray-800">{debugInfo.totalSlots}</p><p>Available study days</p></div>
+                      <div><p className="font-semibold text-gray-800">{debugInfo.totalFreeHours}h</p><p>Total free time</p></div>
+                      <div><p className="font-semibold text-gray-800">{debugInfo.scheduledCount}</p><p>Scheduled blocks</p></div>
+                      <div><p className="font-semibold text-gray-800">{debugInfo.unscheduledCount}</p><p>Unscheduled tasks</p></div>
+                      <div><p className={`font-semibold ${debugInfo.missingDate > 0 ? 'text-red-600' : 'text-green-600'}`}>{debugInfo.missingDate}</p><p>Missing date</p></div>
+                      <div><p className={`font-semibold ${debugInfo.missingStart > 0 ? 'text-red-600' : 'text-green-600'}`}>{debugInfo.missingStart}</p><p>Missing start time</p></div>
+                      <div><p className={`font-semibold ${debugInfo.missingEnd > 0 ? 'text-red-600' : 'text-green-600'}`}>{debugInfo.missingEnd}</p><p>Missing end time</p></div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Toolbar */}
               <div className="flex flex-wrap gap-2 items-center justify-between mb-4">
                 <div className="flex gap-2">
@@ -272,21 +300,19 @@ Return a JSON object with a "schedule" array. Each entry must have: task_id, sch
                     <List className="w-4 h-4 mr-1" /> Task List
                   </Button>
                 </div>
-                <div className="flex gap-2">
-                  <Select value={filter} onValueChange={setFilter}>
-                    <SelectTrigger className="w-40"><Filter className="w-3.5 h-3.5 mr-1" /><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Show all</SelectItem>
-                      <SelectItem value="study">Study tasks only</SelectItem>
-                      <SelectItem value="deadlines">Deadlines only</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                <Select value={filter} onValueChange={setFilter}>
+                  <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All tasks</SelectItem>
+                    <SelectItem value="scheduled">Scheduled only</SelectItem>
+                    <SelectItem value="unscheduled">Unscheduled only</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
+              {/* Calendar view */}
               {view === 'calendar' && (
                 <>
-                  {/* Week navigation */}
                   <div className="flex items-center justify-between mb-3">
                     <Button variant="ghost" size="sm" onClick={() => setWeekOffset(w => w - 1)}>← Previous</Button>
                     <span className="text-sm font-medium text-gray-600">
@@ -295,10 +321,15 @@ Return a JSON object with a "schedule" array. Each entry must have: task_id, sch
                     <Button variant="ghost" size="sm" onClick={() => setWeekOffset(w => w + 1)}>Next →</Button>
                   </div>
 
-                  {/* Calendar grid */}
+                  {!weekHasScheduledTasks && (
+                    <div className="text-center py-6 text-sm text-gray-400 bg-white rounded-xl border border-blue-50 mb-4">
+                      No tasks scheduled for this week. Use the arrows to navigate to weeks with tasks.
+                    </div>
+                  )}
+
                   <div className="bg-white rounded-xl border border-blue-100 shadow-sm overflow-hidden mb-6">
                     <div className="grid grid-cols-8 border-b border-gray-100">
-                      <div className="p-2 text-xs text-gray-400 text-center"></div>
+                      <div className="p-2" />
                       {weekDates.map((d, i) => (
                         <div key={i} className={`p-2 text-center border-l border-gray-100 ${d.toDateString() === PLANNING_REFERENCE_DATE.toDateString() ? 'bg-blue-50' : ''}`}>
                           <p className="text-xs text-gray-400">{dayNames[i]}</p>
@@ -306,22 +337,26 @@ Return a JSON object with a "schedule" array. Each entry must have: task_id, sch
                         </div>
                       ))}
                     </div>
-                    <div className="max-h-[500px] overflow-y-auto">
+                    <div className="max-h-[520px] overflow-y-auto">
                       {HOUR_SLOTS.map(hour => (
                         <div key={hour} className="grid grid-cols-8 border-b border-gray-50 min-h-[48px]">
                           <div className="p-1 text-xs text-gray-400 text-right pr-2 pt-1">{hour}:00</div>
                           {weekDates.map((d, i) => {
-                            const dayTasks = getTasksForDateAndHour(d, hour);
-                            const dayEvents = getEventsForDateAndHour(d, hour);
+                            const cellTasks = getTasksForCell(d, hour);
+                            const cellEvents = getEventsForCell(d, hour);
                             return (
-                              <div key={i} className="border-l border-gray-50 p-0.5 relative">
-                                {dayEvents.map((ev, j) => (
-                                  <div key={`ev-${j}`} className="text-xs bg-gray-100 border border-gray-200 rounded px-1 py-0.5 mb-0.5 truncate text-gray-600">
+                              <div key={i} className="border-l border-gray-50 p-0.5">
+                                {cellEvents.map((ev, j) => (
+                                  <div key={`ev-${j}`} className="text-xs bg-gray-100 border border-gray-200 rounded px-1 py-0.5 mb-0.5 truncate text-gray-500">
                                     {ev.name}
                                   </div>
                                 ))}
-                                {dayTasks.map((task, j) => (
-                                  <div key={`t-${j}`} className={`text-xs rounded px-1 py-0.5 mb-0.5 truncate border ${typeColors[task.task_type] || 'bg-gray-100 border-gray-200 text-gray-700'}`} title={`${task.title} (${task.course_name})`}>
+                                {cellTasks.map((task, j) => (
+                                  <div
+                                    key={`t-${j}`}
+                                    className={`text-xs rounded px-1 py-0.5 mb-0.5 border truncate ${typeColors[task.task_type] || 'bg-gray-100 border-gray-200 text-gray-700'}`}
+                                    title={`${task.title} (${task.course_name}) ${task.scheduled_start}–${task.scheduled_end}`}
+                                  >
                                     {task.title}
                                   </div>
                                 ))}
@@ -335,51 +370,38 @@ Return a JSON object with a "schedule" array. Each entry must have: task_id, sch
                 </>
               )}
 
+              {/* List view */}
               {view === 'list' && (
-                <div className="bg-white rounded-xl border border-blue-100 shadow-sm overflow-hidden mb-6">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="bg-gray-50 text-left text-xs text-gray-500 uppercase tracking-wider">
-                        <th className="px-4 py-3">Course</th>
-                        <th className="px-4 py-3">Task</th>
-                        <th className="px-4 py-3">Date & Time</th>
-                        <th className="px-4 py-3">Hours</th>
-                        <th className="px-4 py-3">Deadline</th>
-                        <th className="px-4 py-3">Priority</th>
-                        <th className="px-4 py-3">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
-                      {filteredTasks
-                        .sort((a, b) => (a.scheduled_date || '').localeCompare(b.scheduled_date || ''))
-                        .map(task => (
-                        <tr key={task.id} className="hover:bg-blue-50/50">
-                          <td className="px-4 py-3 text-gray-600">{task.course_name}</td>
-                          <td className="px-4 py-3 font-medium text-gray-900">{task.title}</td>
-                          <td className="px-4 py-3 text-gray-600">
-                            {task.scheduled_date && `${task.scheduled_date} ${task.scheduled_start || ''}-${task.scheduled_end || ''}`}
-                          </td>
-                          <td className="px-4 py-3 text-gray-600">{task.estimated_hours}h</td>
-                          <td className="px-4 py-3 text-gray-600">{task.deadline || '—'}</td>
-                          <td className="px-4 py-3">
-                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                              task.priority === 'high' ? 'bg-red-100 text-red-700' :
-                              task.priority === 'medium' ? 'bg-amber-100 text-amber-700' :
-                              'bg-green-100 text-green-700'
-                            }`}>{task.priority}</span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                              task.status === 'completed' ? 'bg-emerald-100 text-emerald-700' :
-                              task.status === 'in_progress' ? 'bg-blue-100 text-blue-700' :
-                              task.status === 'postponed' ? 'bg-gray-100 text-gray-600' :
-                              'bg-gray-100 text-gray-600'
-                            }`}>{task.status}</span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="space-y-2 mb-6">
+                  {filteredTasks
+                    .sort((a, b) => (a.scheduled_date || 'zzz').localeCompare(b.scheduled_date || 'zzz'))
+                    .map(task => (
+                      <div key={task.id} className={`bg-white rounded-xl border px-4 py-3 shadow-sm flex items-center justify-between gap-3 ${!task.scheduled_date ? 'border-amber-200 opacity-70' : 'border-blue-100'}`}>
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="min-w-0">
+                            <span className="font-semibold text-gray-900 block truncate">{task.title}</span>
+                            <span className="text-xs text-gray-400">{task.course_name}</span>
+                          </div>
+                          <span className={`flex-shrink-0 px-2 py-0.5 rounded-full text-xs font-medium border ${typeColors[task.task_type] || 'bg-gray-100 border-gray-200 text-gray-600'}`}>
+                            {task.task_type?.replace('_', ' ')}
+                          </span>
+                        </div>
+                        <div className="flex-shrink-0 text-right">
+                          {task.scheduled_date ? (
+                            <span className="text-sm text-gray-500 whitespace-nowrap">
+                              {task.scheduled_date} · {task.scheduled_start}–{task.scheduled_end}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-amber-500 flex items-center gap-1">
+                              <AlertCircle className="w-3.5 h-3.5" /> Unscheduled
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  {filteredTasks.length === 0 && (
+                    <p className="text-center text-gray-400 text-sm py-8">No tasks match this filter.</p>
+                  )}
                 </div>
               )}
 
@@ -389,11 +411,11 @@ Return a JSON object with a "schedule" array. Each entry must have: task_id, sch
                   <Button variant="ghost" onClick={() => navigate(`/plan/${planId}/feasibility`)}>
                     <ArrowLeft className="w-4 h-4 mr-1" /> Back
                   </Button>
-                  <Button variant="outline" size="sm" onClick={generatePlan}>
+                  <Button variant="outline" size="sm" onClick={generatePlan} disabled={generating}>
                     <RotateCcw className="w-4 h-4 mr-1" /> Re-generate
                   </Button>
                 </div>
-                <Button onClick={confirmPlan} className="bg-emerald-600 hover:bg-emerald-700">
+                <Button onClick={confirmPlan} className="bg-emerald-600 hover:bg-emerald-700" disabled={scheduledTasks.length === 0}>
                   <CheckCircle className="w-4 h-4 mr-1" /> Confirm and activate plan
                 </Button>
               </div>
@@ -403,8 +425,8 @@ Return a JSON object with a "schedule" array. Each entry must have: task_id, sch
       </div>
       <ContextChat phase="plan" planId={planId} suggestions={[
         "Why is this task scheduled here?",
-        "Can I move a task to another day?",
-        "How do I compare different plan scenarios?"
+        "How can I free up more study time?",
+        "What if I have too many unscheduled tasks?"
       ]} />
     </div>
   );
