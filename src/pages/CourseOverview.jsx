@@ -356,7 +356,7 @@ export default function CourseOverview() {
           </div>
 
           {/* Add course */}
-          <div className="bg-white rounded-xl border border-dashed border-blue-200 p-4 mb-8">
+          <div className="bg-white rounded-xl border border-dashed border-blue-200 p-4 mb-8 hidden">
             
 
 
