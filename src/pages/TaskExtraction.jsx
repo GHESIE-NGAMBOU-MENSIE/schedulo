@@ -43,9 +43,8 @@ export default function TaskExtraction() {
       });
       setTasks(grouped);
       setExtracted(true);
-    } else if (courseList.length > 0) {
-      extractTasksForCourses(courseList);
     }
+    // Don't auto-trigger — wait for user to click so plan data is fully ready
   };
 
   const buildFallbackTasks = (course) => [
@@ -169,7 +168,16 @@ Return JSON "tasks" array, each with: title, task_type (reading/assignment/exerc
     setExtracting(false);
   };
 
-  const extractTasks = () => extractTasksForCourses(courses);
+  const extractTasks = async () => {
+    // Clear existing tasks for this plan first to avoid duplicates
+    setExtracted(false);
+    setTasks({});
+    await base44.entities.StudyTask.deleteMany({ plan_id: planId });
+    // Re-fetch courses fresh to avoid stale state
+    const freshCourses = await base44.entities.Course.filter({ plan_id: planId });
+    setCourses(freshCourses);
+    extractTasksForCourses(freshCourses);
+  };
 
   const updateTask = async (taskId, updates) => {
     await base44.entities.StudyTask.update(taskId, updates);
