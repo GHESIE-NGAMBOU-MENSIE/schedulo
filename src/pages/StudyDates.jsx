@@ -507,8 +507,8 @@ export default function StudyDates() {
       {showBanner &&
       <div className="fixed bottom-24 right-6 z-40 max-w-xs">
           <div className="bg-blue-600 text-white text-sm px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2">
-            <span>👋</span>
-            <span className="flex-1">Hi! Click the chat button below if you have any questions.</span>
+            <span className="hidden">👋</span>
+            <span className="flex-1">👋 Hi! Click here to chat with me if you have any questions while creating your study plan. I'm here to help.</span>
             <button onClick={() => setShowBanner(false)} className="ml-1 hover:bg-blue-700 rounded-full p-0.5 flex-shrink-0 transition-colors">
               <X className="w-3.5 h-3.5" />
             </button>
