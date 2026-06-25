@@ -45,8 +45,8 @@ function FallbackWarning({ course }) {
     <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 text-sm text-amber-800">
       <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0 text-amber-500" />
       <span>
-        No course material was available for <strong>{course.name}</strong>, so Schedulo generated generic tasks.
-        Please <a href="#" onClick={e => { e.preventDefault(); window.history.back(); }} className="underline font-medium">add or paste course material</a> to get more specific tasks.
+        I could not find enough detailed information for <strong>{course.name}</strong>, so I created a basic task structure.
+        You can edit, remove, or add tasks before generating your study plan — or <a href="#" onClick={e => { e.preventDefault(); window.history.back(); }} className="underline font-medium">go back and add course material</a> to get more specific tasks.
       </span>
     </div>
   );
@@ -158,7 +158,7 @@ export default function TaskExtraction() {
       const mode = getExtractionMode(course);
       newDebug[course.id] = { mode };
 
-      const prompt = `You are a study planning assistant. Generate specific, ranked study tasks for a student.
+      const prompt = `You are a study planning assistant. Extract or generate SPECIFIC, ACTIONABLE study tasks for a student based on the course material below.
 
 Course: ${course.name}
 Type: ${(course.course_type || []).join(', ')}
@@ -168,20 +168,42 @@ Description: ${course.description || 'none'}
 Difficulty: ${course.difficulty || 'medium'}
 Familiarity: ${course.familiarity || 'medium'}
 Study Period: ${plan.start_date} to ${plan.end_date}
-Syllabus/Materials:
-${course.materials_text || 'No materials — generate reasonable generic tasks for this subject.'}
+Course Material:
+${course.materials_text || ''}
 
-RULES:
-1. ALWAYS return at least 4 tasks — never return an empty list.
-2. Tasks = LEARNING ACTIONS: reading, revising, practicing, completing assignments. Never "Attend lecture".
-3. If syllabus has weekly topics, create one task per topic in order.
-4. If no materials, generate sensible generic tasks for a course named "${course.name}".
-5. Order tasks from first to last in recommended study sequence.
-6. Be specific: "Read Chapter 2: Binary Trees" not "Study algorithms".
+## EXTRACTION RULES
 
-Time estimates: 1 credit ≈ 25h total. Difficulty easy=-20%, difficult=+30%. Familiarity high=-20%, low=+25%.
+TASK COUNT: Do NOT limit tasks to 4–5. Return as many tasks as the material implies. If the material has 10 chapters, return ~20 tasks (one reading + one practice per chapter). Only return 4–5 generic tasks if the material has no chapters, topics, assignments, exercises, deadlines, or milestones at all.
 
-Return JSON "tasks" array, each with: title, task_type (reading/assignment/exercise/revision/test/project_work), deadline (YYYY-MM-DD or null), estimated_hours, priority (low/medium/high), suggested_phase (early semester/mid semester/before exam/throughout), order (int).`;
+TASK NAMING: Be specific and action-oriented. Never use vague names like "Study course", "Prepare", "Review material". Use names like "Study decision trees", "Read chapter 3", "Review and practice exercise 2".
+
+TASK TYPE MAPPING — apply strictly:
+- Each chapter or topic → task_type "reading". Title: "Read chapter X" or "Study [topic name]"
+- Each exercise or exercise sheet → task_type "exercise". Title: "Review and practice [exercise/topic] exercises"
+- Each assignment → task_type "assignment". Create two tasks: "Work on assignment X" and "Review assignment X before submission"
+- Each quiz or test → task_type "test". Title: "Prepare for quiz/test on [topic]"
+- Each exam → task_type "revision" + task_type "test". Titles: "Revise key concepts for [topic] exam", "Prepare for final exam"
+- Each project milestone or phase → task_type "project_work". Title: specific milestone name
+
+PROJECT/RESEARCH DETECTION — if course name, description, or material mentions any of these keywords, generate the corresponding milestone tasks instead of generic ones:
+- "SLR", "systematic literature review", "literature review" → generate SLR milestones: "Refine research question", "Define search terms", "Define inclusion and exclusion criteria", "Select search databases", "Conduct literature search", "Screen search results", "Read selected papers", "Extract relevant data", "Synthesize findings", "Write literature review section", "Revise literature review", "Prepare final submission"
+- "DSR", "design science research", "design science", "artifact", "design requirements", "prototype" → generate DSR milestones: "Refine research question", "Understand design science research approach", "Define problem context", "Identify stakeholder needs", "Derive design requirements", "Design initial artifact concept", "Develop prototype", "Plan evaluation", "Conduct evaluation", "Analyze evaluation results", "Write methodology section", "Write artifact/design section", "Write evaluation section", "Revise final report", "Prepare final submission"
+- "implementation", "software prototype", "development", "application" → generate implementation milestones: "Define requirements", "Design solution concept", "Set up development environment", "Implement core functionality", "Test functionality", "Fix issues", "Document implementation", "Prepare presentation", "Submit final version"
+- "seminar paper", "seminar", "academic paper", "presentation" → generate seminar milestones: "Choose/refine topic", "Search literature", "Read key sources", "Create outline", "Write first draft", "Revise draft", "Prepare presentation", "Practice presentation", "Submit final version"
+
+SCHEDULING — assign suggested_phase based on task type and study period (${plan.start_date} to ${plan.end_date}):
+- "early": orientation, first chapters/topics, project setup
+- "early-mid": first half of reading/study tasks
+- "mid": middle chapters, exercises, assignment work
+- "mid-late": later chapters, exercise review, assignment review
+- "late": revision, final writing, testing, evaluation
+- "before-deadline": anything that must happen just before a deadline/exam
+- "throughout": recurring or continuous tasks
+Distribute reading tasks evenly across the study period. Schedule exercise tasks AFTER the related reading task. Schedule review/revision tasks near the end.
+
+TIME ESTIMATES: 1 credit ≈ 25h total. Difficulty easy=-20%, difficult=+30%. Familiarity high=-20%, low=+25%. Split total time across all tasks proportionally.
+
+Return a JSON "tasks" array. Each task: title (string), task_type (reading/assignment/exercise/revision/test/project_work), deadline (YYYY-MM-DD or null), estimated_hours (number), priority (low/medium/high), suggested_phase (early/early-mid/mid/mid-late/late/before-deadline/throughout), order (int starting at 1).`;
 
       if (mode === 'fallback') {
         // Skip LLM entirely for true fallback — no materials or description
