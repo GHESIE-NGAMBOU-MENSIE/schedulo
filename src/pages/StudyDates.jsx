@@ -433,61 +433,38 @@ export default function StudyDates() {
             </motion.div>
           }
 
-          {/* Detected events table */}
+          {/* Detected events list */}
           {events.length > 0 &&
-          <div className="bg-white rounded-xl border border-blue-100 shadow-sm mb-6 overflow-hidden">
-              <div className="p-4 border-b border-blue-50">
+          <div className="mb-6">
+              <div className="flex items-center justify-between mb-3">
                 <h3 className="font-semibold text-gray-900">{events.length} detected events</h3>
-                <p className="text-xs text-gray-400">Recurring events are shown once. Click the type badge to toggle between Course and Commitment.</p>
+                <p className="text-xs text-gray-400">Click a badge to toggle its type</p>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-gray-50 text-left text-xs text-gray-500 uppercase tracking-wider">
-                      <th className="px-4 py-3">Name</th>
-                      <th className="px-4 py-3">Type</th>
-                      <th className="px-4 py-3">Day</th>
-                      <th className="px-4 py-3">Time</th>
-                      <th className="px-4 py-3">Start</th>
-                      <th className="px-4 py-3">End</th>
-                      <th className="px-4 py-3"></th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {events.map((ev, i) =>
-                  <tr key={i} className="hover:bg-blue-50/50 transition-colors">
-                        <td className="px-4 py-3 font-medium text-gray-900">
-                          {ev.name}
-                          {ev.is_recurring && <span className="ml-1 text-purple-600 text-xs bg-purple-50 px-1.5 py-0.5 rounded">Recurring</span>}
-                        </td>
-                        <td className="px-4 py-3">
-                          <button
+              <div className="space-y-2">
+                {events.map((ev, i) => (
+                  <div key={i} className="bg-white rounded-xl border border-blue-100 px-4 py-3 shadow-sm flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="font-semibold text-gray-900 truncate">{ev.name}</span>
+                      <button
                         onClick={() => {
                           const newType = ev.type === 'course' ? 'commitment' : 'course';
                           setEvents((prev) => prev.map((e, idx) => idx === i ? { ...e, type: newType, is_course: newType === 'course' } : e));
                         }}
-                        title="Click to toggle type"
-                        className={`px-2 py-0.5 rounded-full text-xs font-medium cursor-pointer transition-colors hover:opacity-80 ${ev.type === 'course' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
-                        
-                            {ev.type === 'course' ? 'Course' : 'Commitment'}
-                          </button>
-                        </td>
-                        <td className="px-4 py-3 text-gray-600">{ev.day_of_week && ev.day_of_week !== 'Flexible' ? ev.day_of_week : '—'}</td>
-                        <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
-                          {ev.start_time && ev.end_time ? `${ev.start_time}–${ev.end_time}` : ev.start_time || '—'}
-                        </td>
-                        <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{ev.start_date || ev.date || '—'}</td>
-                        <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{ev.end_date || ev.date || '—'}</td>
-                        <td className="px-4 py-3">
-                          <div className="flex gap-1">
-                            <button onClick={() => editEvent(i)} className="p-1 hover:bg-gray-100 rounded"><Edit2 className="w-3.5 h-3.5 text-gray-400" /></button>
-                            <button onClick={() => deleteEvent(i)} className="p-1 hover:bg-red-50 rounded"><Trash2 className="w-3.5 h-3.5 text-red-400" /></button>
-                          </div>
-                        </td>
-                      </tr>
-                  )}
-                  </tbody>
-                </table>
+                        className={`flex-shrink-0 px-2.5 py-0.5 rounded-full text-xs font-medium cursor-pointer transition-colors hover:opacity-80 ${ev.type === 'course' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
+                        {ev.type === 'course' ? 'Course' : 'Commitment'}
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-3 flex-shrink-0">
+                      <span className="text-sm text-gray-400 whitespace-nowrap">
+                        {[ev.day_of_week && ev.day_of_week !== 'Flexible' ? ev.day_of_week : null, ev.start_time && ev.end_time ? `${ev.start_time}–${ev.end_time}` : ev.start_time || null].filter(Boolean).join(' · ') || '—'}
+                      </span>
+                      <div className="flex gap-1">
+                        <button onClick={() => editEvent(i)} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"><Edit2 className="w-3.5 h-3.5 text-gray-400" /></button>
+                        <button onClick={() => deleteEvent(i)} className="p-1.5 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="w-3.5 h-3.5 text-red-400" /></button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           }
