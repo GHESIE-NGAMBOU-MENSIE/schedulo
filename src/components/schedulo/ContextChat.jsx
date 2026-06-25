@@ -18,9 +18,13 @@ const phaseContexts = {
   export: "You are on the export screen. Help users save, export, and archive their study plans."
 };
 
-export default function ContextChat({ phase, planId, suggestions }) {
-  const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState([]);
+export default function ContextChat({ phase, planId, suggestions, initialMessage, autoOpen }) {
+  const [open, setOpen] = useState(!!autoOpen);
+  const [messages, setMessages] = useState(
+    initialMessage
+      ? [{ role: 'assistant', content: initialMessage }]
+      : []
+  );
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const endRef = useRef(null);
@@ -103,6 +107,19 @@ Respond helpfully, concisely, and in a friendly tone. Use short paragraphs. If y
                 </button>
               ))}
             </div>
+          </div>
+        )}
+        {messages.length > 0 && messages[messages.length - 1].role === 'assistant' && !loading && (
+          <div className="space-y-2 mt-1">
+            {defaultSuggestions.map((s, i) => (
+              <button
+                key={i}
+                onClick={() => sendMessage(s)}
+                className="w-full text-left text-sm px-3 py-2 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors"
+              >
+                {s}
+              </button>
+            ))}
           </div>
         )}
         {messages.map((msg, i) => (
