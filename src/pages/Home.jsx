@@ -23,12 +23,15 @@ export default function Home() {
   };
 
   const deletePlan = async (id) => {
-    await base44.entities.StudyPlan.delete(id);
-    // Clean up related data
-    const courses = await base44.entities.Course.filter({ plan_id: id });
-    for (const c of courses) await base44.entities.Course.delete(c.id);
-    const tasks = await base44.entities.StudyTask.filter({ plan_id: id });
-    for (const t of tasks) await base44.entities.StudyTask.delete(t.id);
+    try { await base44.entities.StudyPlan.delete(id); } catch (e) {}
+    try {
+      const courses = await base44.entities.Course.filter({ plan_id: id });
+      for (const c of courses) await base44.entities.Course.delete(c.id);
+    } catch (e) {}
+    try {
+      const tasks = await base44.entities.StudyTask.filter({ plan_id: id });
+      for (const t of tasks) await base44.entities.StudyTask.delete(t.id);
+    } catch (e) {}
     loadPlans();
   };
 
