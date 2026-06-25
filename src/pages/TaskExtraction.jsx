@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
-import { ListChecks, ArrowRight, ArrowLeft, Loader2, Edit2, Check, Trash2, Plus, ChevronDown, ChevronUp, AlertTriangle, Bug } from 'lucide-react';
+import { ListChecks, ArrowRight, ArrowLeft, Loader2, Edit2, Check, Trash2, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import PhaseIndicator from '@/components/schedulo/PhaseIndicator';
 import StepHeader from '@/components/schedulo/StepHeader';
@@ -13,94 +12,6 @@ import ContextChat from '@/components/schedulo/ContextChat';
 import { motion } from 'framer-motion';
 
 const TASK_TYPES = ['reading', 'assignment', 'exercise', 'revision', 'test', 'project_work'];
-const IS_DEV = import.meta.env.DEV;
-
-// extraction_mode: 'ai_materials' | 'ai_description' | 'fallback'
-function getExtractionMode(course) {
-  if (course.materials_text && course.materials_text.trim().length > 20) return 'ai_materials';
-  if (course.description && course.description.trim().length > 10) return 'ai_description';
-  return 'fallback';
-}
-
-function ExtractionModeBadge({ mode }) {
-  if (mode === 'ai_materials') return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
-      ✦ Extracted from course material
-    </span>
-  );
-  if (mode === 'ai_description') return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
-      ✦ Generated from course description
-    </span>
-  );
-  return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
-      ⚠ Generated from generic fallback
-    </span>
-  );
-}
-
-function FallbackWarning({ course }) {
-  return (
-    <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 text-sm text-amber-800">
-      <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0 text-amber-500" />
-      <span>
-        I could not find enough detailed information for <strong>{course.name}</strong>, so I created a basic task structure.
-        You can edit, remove, or add tasks before generating your study plan — or <a href="#" onClick={e => { e.preventDefault(); window.history.back(); }} className="underline font-medium">go back and add course material</a> to get more specific tasks.
-      </span>
-    </div>
-  );
-}
-
-function DebugPanel({ courses, debugInfo, tasks }) {
-  const [open, setOpen] = useState(false);
-  if (!IS_DEV) return null;
-
-  return (
-    <div className="mb-6 border border-dashed border-purple-300 rounded-xl overflow-hidden">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between px-4 py-2.5 bg-purple-50 text-purple-700 text-sm font-medium hover:bg-purple-100 transition-colors"
-      >
-        <span className="flex items-center gap-2"><Bug className="w-4 h-4" /> Extraction Debug</span>
-        {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-      </button>
-      {open && (
-        <div className="bg-white divide-y divide-purple-50">
-          {courses.map(course => {
-            const info = debugInfo[course.id] || {};
-            const taskCount = (tasks[course.id] || []).length;
-            const hasMaterials = !!(course.materials_text && course.materials_text.trim().length > 20);
-            const hasDesc = !!(course.description && course.description.trim().length > 10);
-            const modeLabel = info.mode === 'ai_materials' ? 'AI extraction from materials'
-              : info.mode === 'ai_description' ? 'AI generation from description'
-              : info.mode === 'fallback' ? 'generic fallback'
-              : '—';
-
-            return (
-              <div key={course.id} className="px-4 py-3 text-xs font-mono space-y-1">
-                <p className="font-semibold text-purple-800 text-sm font-sans">{course.name}</p>
-                <p><span className="text-gray-500">description:</span> {hasDesc ? <span className="text-green-600">✓ exists</span> : <span className="text-red-500">✗ missing</span>}</p>
-                <p><span className="text-gray-500">materials_text:</span> {hasMaterials ? <span className="text-green-600">✓ exists</span> : <span className="text-red-500">✗ missing</span>}</p>
-                <p><span className="text-gray-500">materials length:</span> {course.materials_text ? course.materials_text.length : 0} chars</p>
-                {course.materials_text && (
-                  <p className="text-gray-400 break-all whitespace-pre-wrap">
-                    <span className="text-gray-500">preview: </span>"{course.materials_text.slice(0, 300)}{course.materials_text.length > 300 ? '…' : ''}"
-                  </p>
-                )}
-                <p><span className="text-gray-500">extraction mode:</span> <span className="text-purple-700 font-semibold">{modeLabel}</span></p>
-                <p><span className="text-gray-500">tasks generated:</span> {taskCount}</p>
-                {info.error && (
-                  <p className="text-red-600 bg-red-50 rounded p-1"><span className="text-gray-500">error:</span> {info.error}</p>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
 
 export default function TaskExtraction() {
   const { planId } = useParams();
@@ -109,8 +20,6 @@ export default function TaskExtraction() {
   const [tasks, setTasks] = useState({});
   const [extracting, setExtracting] = useState(false);
   const [extracted, setExtracted] = useState(false);
-  const [extractProgress, setExtractProgress] = useState(0);
-  const [debugInfo, setDebugInfo] = useState({}); // { [courseId]: { mode, error } }
   const [editTask, setEditTask] = useState(null);
   const [activeCourse, setActiveCourse] = useState(0);
   const [showAddTask, setShowAddTask] = useState(false);
@@ -131,91 +40,46 @@ export default function TaskExtraction() {
         if (grouped[t.course_id]) grouped[t.course_id].push(t);
       });
       setTasks(grouped);
-      // Reconstruct debug info from existing data (mode only, no errors)
-      const info = {};
-      courseList.forEach(c => { info[c.id] = { mode: getExtractionMode(c) }; });
-      setDebugInfo(info);
       setExtracted(true);
     }
   };
 
-  const buildFallbackTasks = (course) => [
-    { title: `Review lecture notes — ${course.name}`, task_type: 'reading', estimated_hours: 2, priority: 'medium', suggested_phase: 'early semester' },
-    { title: `Read assigned material — ${course.name}`, task_type: 'reading', estimated_hours: 3, priority: 'medium', suggested_phase: 'early semester' },
-    { title: `Complete exercises — ${course.name}`, task_type: 'exercise', estimated_hours: 2, priority: 'medium', suggested_phase: 'mid semester' },
-    { title: `Practice and revise key concepts — ${course.name}`, task_type: 'revision', estimated_hours: 2, priority: 'high', suggested_phase: 'mid semester' },
-    { title: `Revision and exam preparation — ${course.name}`, task_type: 'revision', estimated_hours: 4, priority: 'high', suggested_phase: 'before exam', deadline: course.exam_date || null },
-  ];
-
-  const extractTasksForCourses = async (courseList) => {
+  const extractTasks = async () => {
     setExtracting(true);
-    setExtractProgress(0);
-    const plan = await base44.entities.StudyPlan.get(planId);
     const newTasks = {};
-    const newDebug = {};
+    const plan = await base44.entities.StudyPlan.get(planId);
 
-    const extractForCourse = async (course) => {
-      const mode = getExtractionMode(course);
-      newDebug[course.id] = { mode };
+    for (const course of courses) {
+      const prompt = `You are a study planning assistant. Extract concrete study tasks from this course information.
 
-      const prompt = `You are a study planning assistant. Extract or generate SPECIFIC, ACTIONABLE study tasks for a student based on the course material below.
+IMPORTANT: Today's planning reference date is 2026-04-01. Use this as "today" for all deadline and scheduling decisions.
 
 Course: ${course.name}
 Type: ${(course.course_type || []).join(', ')}
 Credit Points: ${course.credit_points || 'unknown'}
-Exam Date: ${course.exam_date || 'none'}
-Description: ${course.description || 'none'}
+Exam Date: ${course.exam_date || 'unknown'}
+Description: ${course.description || 'No description'}
 Difficulty: ${course.difficulty || 'medium'}
 Familiarity: ${course.familiarity || 'medium'}
+Priority: ${course.priority || 'medium'}
 Study Period: ${plan.start_date} to ${plan.end_date}
-Course Material:
-${course.materials_text || ''}
+Course Materials/Syllabus: ${course.materials_text || 'No materials provided'}
 
-## EXTRACTION RULES
+Based on this information, generate 4-8 concrete study tasks. Each task should be specific and actionable.
 
-TASK COUNT: Do NOT limit tasks to 4–5. Return as many tasks as the material implies. If the material has 10 chapters, return ~20 tasks (one reading + one practice per chapter). Only return 4–5 generic tasks if the material has no chapters, topics, assignments, exercises, deadlines, or milestones at all.
+For study time estimation, consider:
+- 1 credit point ≈ 25-30 hours total workload
+- Difficulty adjustment: easy=-20%, medium=0%, difficult=+30%
+- Familiarity adjustment: high=-20%, medium=0%, low=+25%
 
-TASK NAMING: Be specific and action-oriented. Never use vague names like "Study course", "Prepare", "Review material". Use names like "Study decision trees", "Read chapter 3", "Review and practice exercise 2".
-
-TASK TYPE MAPPING — apply strictly:
-- Each chapter or topic → task_type "reading". Title: "Read chapter X" or "Study [topic name]"
-- Each exercise or exercise sheet → task_type "exercise". Title: "Review and practice [exercise/topic] exercises"
-- Each assignment → task_type "assignment". Create two tasks: "Work on assignment X" and "Review assignment X before submission"
-- Each quiz or test → task_type "test". Title: "Prepare for quiz/test on [topic]"
-- Each exam → task_type "revision" + task_type "test". Titles: "Revise key concepts for [topic] exam", "Prepare for final exam"
-- Each project milestone or phase → task_type "project_work". Title: specific milestone name
-
-PROJECT/RESEARCH DETECTION — if course name, description, or material mentions any of these keywords, generate the corresponding milestone tasks instead of generic ones:
-- "SLR", "systematic literature review", "literature review" → generate SLR milestones: "Refine research question", "Define search terms", "Define inclusion and exclusion criteria", "Select search databases", "Conduct literature search", "Screen search results", "Read selected papers", "Extract relevant data", "Synthesize findings", "Write literature review section", "Revise literature review", "Prepare final submission"
-- "DSR", "design science research", "design science", "artifact", "design requirements", "prototype" → generate DSR milestones: "Refine research question", "Understand design science research approach", "Define problem context", "Identify stakeholder needs", "Derive design requirements", "Design initial artifact concept", "Develop prototype", "Plan evaluation", "Conduct evaluation", "Analyze evaluation results", "Write methodology section", "Write artifact/design section", "Write evaluation section", "Revise final report", "Prepare final submission"
-- "implementation", "software prototype", "development", "application" → generate implementation milestones: "Define requirements", "Design solution concept", "Set up development environment", "Implement core functionality", "Test functionality", "Fix issues", "Document implementation", "Prepare presentation", "Submit final version"
-- "seminar paper", "seminar", "academic paper", "presentation" → generate seminar milestones: "Choose/refine topic", "Search literature", "Read key sources", "Create outline", "Write first draft", "Revise draft", "Prepare presentation", "Practice presentation", "Submit final version"
-
-SCHEDULING — assign suggested_phase based on task type and study period (${plan.start_date} to ${plan.end_date}):
-- "early": orientation, first chapters/topics, project setup
-- "early-mid": first half of reading/study tasks
-- "mid": middle chapters, exercises, assignment work
-- "mid-late": later chapters, exercise review, assignment review
-- "late": revision, final writing, testing, evaluation
-- "before-deadline": anything that must happen just before a deadline/exam
-- "throughout": recurring or continuous tasks
-Distribute reading tasks evenly across the study period. Schedule exercise tasks AFTER the related reading task. Schedule review/revision tasks near the end.
-
-TIME ESTIMATES: 1 credit ≈ 25h total. Difficulty easy=-20%, difficult=+30%. Familiarity high=-20%, low=+25%. Split total time across all tasks proportionally.
-
-Return a JSON "tasks" array. Each task: title (string), task_type (reading/assignment/exercise/revision/test/project_work), deadline (YYYY-MM-DD or null), estimated_hours (number), priority (low/medium/high), suggested_phase (early/early-mid/mid/mid-late/late/before-deadline/throughout), order (int starting at 1).`;
-
-      if (mode === 'fallback') {
-        // Skip LLM entirely for true fallback — no materials or description
-        const fallbackData = buildFallbackTasks(course).map(t => ({
-          plan_id: planId, course_id: course.id, course_name: course.name,
-          title: t.title, task_type: t.task_type, deadline: t.deadline || null,
-          estimated_hours: t.estimated_hours, priority: t.priority,
-          suggested_phase: t.suggested_phase, status: 'open', confirmed: false, dependencies: []
-        }));
-        const created = await base44.entities.StudyTask.bulkCreate(fallbackData);
-        return { courseId: course.id, tasks: Array.isArray(created) ? created : fallbackData };
-      }
+Return a JSON object with a "tasks" array, where each task has:
+- title (string, specific and actionable)
+- task_type (one of: reading, assignment, exercise, revision, test, project_work)
+- deadline (date string YYYY-MM-DD or null)
+- estimated_hours (number, realistic)
+- priority (low/medium/high)
+- dependencies (array of task titles this depends on, or empty array)
+- suggested_phase (string: "early semester", "mid semester", "before exam", "throughout")`;
 
       try {
         const result = await base44.integrations.Core.InvokeLLM({
@@ -233,84 +97,44 @@ Return a JSON "tasks" array. Each task: title (string), task_type (reading/assig
                     deadline: { type: "string" },
                     estimated_hours: { type: "number" },
                     priority: { type: "string" },
-                    suggested_phase: { type: "string" },
-                    order: { type: "number" }
+                    dependencies: { type: "array", items: { type: "string" } },
+                    suggested_phase: { type: "string" }
                   }
                 }
               }
             }
-          },
-          model: 'claude_sonnet_4_6'
+          }
         });
 
-        const sorted = (result.tasks || []).sort((a, b) => (a.order || 0) - (b.order || 0));
-        // If LLM returned nothing, fall back silently but record it
-        if (sorted.length === 0) {
-          newDebug[course.id] = { mode: 'fallback', error: 'LLM returned 0 tasks — fell back to generic' };
+        const extracted = result.tasks || [];
+        const created = [];
+        for (const t of extracted) {
+          const record = await base44.entities.StudyTask.create({
+            plan_id: planId,
+            course_id: course.id,
+            course_name: course.name,
+            title: t.title,
+            task_type: TASK_TYPES.includes(t.task_type) ? t.task_type : 'reading',
+            deadline: t.deadline || null,
+            estimated_hours: t.estimated_hours || 2,
+            priority: ['low', 'medium', 'high'].includes(t.priority) ? t.priority : 'medium',
+            dependencies: t.dependencies || [],
+            suggested_phase: t.suggested_phase || '',
+            status: 'open',
+            confirmed: false
+          });
+          created.push(record);
         }
-        const taskData = sorted.length > 0 ? sorted : buildFallbackTasks(course);
-
-        const toCreate = taskData.map(t => ({
-          plan_id: planId,
-          course_id: course.id,
-          course_name: course.name,
-          title: t.title,
-          task_type: TASK_TYPES.includes(t.task_type) ? t.task_type : 'reading',
-          deadline: t.deadline || null,
-          estimated_hours: t.estimated_hours || 2,
-          priority: ['low', 'medium', 'high'].includes(t.priority) ? t.priority : 'medium',
-          dependencies: [],
-          suggested_phase: t.suggested_phase || '',
-          status: 'open',
-          confirmed: false
-        }));
-
-        const created = await base44.entities.StudyTask.bulkCreate(toCreate);
-        return { courseId: course.id, tasks: Array.isArray(created) ? created : toCreate };
+        newTasks[course.id] = created;
       } catch (e) {
-        const errorMsg = e?.message || String(e);
-        newDebug[course.id] = { mode: 'fallback', error: errorMsg };
-        const fallbackData = buildFallbackTasks(course).map(t => ({
-          plan_id: planId, course_id: course.id, course_name: course.name,
-          title: t.title, task_type: t.task_type, deadline: t.deadline || null,
-          estimated_hours: t.estimated_hours, priority: t.priority,
-          suggested_phase: t.suggested_phase, status: 'open', confirmed: false, dependencies: []
-        }));
-        try {
-          const created = await base44.entities.StudyTask.bulkCreate(fallbackData);
-          return { courseId: course.id, tasks: Array.isArray(created) ? created : fallbackData };
-        } catch (_) {
-          return { courseId: course.id, tasks: [] };
-        }
+        console.error(e);
+        newTasks[course.id] = [];
       }
-    };
+    }
 
-    let completed = 0;
-    const results = await Promise.all(
-      courseList.map(course =>
-        extractForCourse(course).then(res => {
-          completed++;
-          setExtractProgress(Math.round((completed / courseList.length) * 100));
-          return res;
-        })
-      )
-    );
-
-    results.forEach(({ courseId, tasks: t }) => { newTasks[courseId] = t; });
     setTasks(newTasks);
-    setDebugInfo({ ...newDebug });
     setExtracted(true);
     setExtracting(false);
-  };
-
-  const extractTasks = async () => {
-    setExtracted(false);
-    setTasks({});
-    setDebugInfo({});
-    await base44.entities.StudyTask.deleteMany({ plan_id: planId });
-    const freshCourses = await base44.entities.Course.filter({ plan_id: planId });
-    setCourses(freshCourses);
-    extractTasksForCourses(freshCourses);
   };
 
   const updateTask = async (taskId, updates) => {
@@ -354,9 +178,9 @@ Return a JSON "tasks" array. Each task: title (string), task_type (reading/assig
   };
 
   const confirmAll = async () => {
-    const allTasks = Object.values(tasks).flat().filter(t => t.id);
-    if (allTasks.length > 0) {
-      await base44.entities.StudyTask.bulkUpdate(allTasks.map(t => ({ id: t.id, confirmed: true })));
+    const allTasks = Object.values(tasks).flat();
+    for (const t of allTasks) {
+      await base44.entities.StudyTask.update(t.id, { confirmed: true });
     }
     await base44.entities.StudyPlan.update(planId, { phase: 'generation', step: 7 });
     navigate(`/plan/${planId}/feasibility`);
@@ -364,7 +188,6 @@ Return a JSON "tasks" array. Each task: title (string), task_type (reading/assig
 
   const currentCourse = courses[activeCourse];
   const currentTasks = currentCourse ? (tasks[currentCourse.id] || []) : [];
-  const currentMode = currentCourse ? (debugInfo[currentCourse.id]?.mode || getExtractionMode(currentCourse)) : null;
   const totalHours = Object.values(tasks).flat().reduce((sum, t) => sum + (t.estimated_hours || 0), 0);
 
   return (
@@ -381,14 +204,10 @@ Return a JSON "tasks" array. Each task: title (string), task_type (reading/assig
           {!extracted && (
             <div className="bg-white rounded-xl border border-blue-100 p-8 shadow-sm text-center mb-6">
               {extracting ? (
-                <div className="space-y-4">
+                <div className="space-y-3">
                   <Loader2 className="w-10 h-10 animate-spin text-blue-500 mx-auto" />
                   <p className="text-gray-600 font-medium">Analyzing your courses and extracting tasks...</p>
-                  <p className="text-sm text-gray-400">All courses are processed in parallel — won't take long!</p>
-                  <div className="max-w-xs mx-auto space-y-1">
-                    <Progress value={extractProgress} className="h-2" />
-                    <p className="text-xs text-gray-400 text-right">{extractProgress}%</p>
-                  </div>
+                  <p className="text-sm text-gray-400">This may take a moment.</p>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -421,14 +240,7 @@ Return a JSON "tasks" array. Each task: title (string), task_type (reading/assig
                     <p className="text-xs text-blue-500">Courses</p>
                   </div>
                 </div>
-                <Button variant="outline" size="sm" onClick={extractTasks} disabled={extracting}>
-                  {extracting ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
-                  Re-extract
-                </Button>
               </div>
-
-              {/* Debug panel (dev only) */}
-              <DebugPanel courses={courses} debugInfo={debugInfo} tasks={tasks} />
 
               {/* Course tabs */}
               <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
@@ -445,19 +257,11 @@ Return a JSON "tasks" array. Each task: title (string), task_type (reading/assig
                 ))}
               </div>
 
-              {/* Status badge + fallback warning for active course */}
-              {currentCourse && (
-                <div className="mb-4 space-y-2">
-                  <ExtractionModeBadge mode={currentMode} />
-                  {currentMode === 'fallback' && <FallbackWarning course={currentCourse} />}
-                </div>
-              )}
-
               {/* Tasks for active course */}
               <div className="space-y-3 mb-6">
                 {currentTasks.map((task, i) => (
                   <motion.div
-                    key={task.id || i}
+                    key={task.id}
                     initial={{ opacity: 0, y: 5 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: i * 0.03 }}

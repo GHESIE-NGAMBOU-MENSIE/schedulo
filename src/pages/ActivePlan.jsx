@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
-import { Calendar, List, Filter, CheckCircle, Circle, Clock, MessageCircle, Download, AlertTriangle, ChevronLeft, ChevronRight, Settings } from 'lucide-react';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Calendar, List, Filter, CheckCircle, Circle, Clock, MessageCircle, Download, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { PLANNING_REFERENCE_DATE, PLANNING_REFERENCE_DATE_STR } from '@/lib/planningDate';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -155,21 +154,6 @@ export default function ActivePlan() {
               <Link to={`/plan/${planId}/export`}>
                 <Button variant="outline" size="sm"><Download className="w-4 h-4 mr-1" /> Export</Button>
               </Link>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm"><Settings className="w-4 h-4 mr-1" /> Edit plan</Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuLabel className="text-xs text-gray-400">Go back and edit</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => navigate(`/plan/${planId}/dates`)}>Study dates &amp; calendar</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate(`/plan/${planId}/preferences`)}>Study preferences</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate(`/plan/${planId}/courses`)}>Courses</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate(`/plan/${planId}/tasks`)}>Task extraction</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate(`/plan/${planId}/feasibility`)}>Feasibility check</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate(`/plan/${planId}/generate`)}>Regenerate schedule</DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
             </div>
           </div>
 

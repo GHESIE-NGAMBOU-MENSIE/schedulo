@@ -63,36 +63,6 @@ export default function CourseDetail() {
     try {
       const { file_url } = await base44.integrations.Core.UploadFile({ file });
       setFiles(prev => [...prev, file_url]);
-
-      // Extract structured learning content from the document
-      const extraction = await base44.integrations.Core.InvokeLLM({
-        prompt: `You are a course content extractor. Analyze this course document and extract ALL structured learning content.
-
-Focus on extracting:
-- Weekly schedule and lecture topics (Week 1: Topic X, Week 2: Topic Y, etc.)
-- Course chapters and learning units
-- Assignments and deliverables with deadlines
-- Exams or milestones with dates
-- Reading lists or required materials
-- Any recurring tasks or activities
-
-Format the output as a clear, structured text listing:
-- All weekly topics in order
-- All assignments with deadlines if mentioned
-- All exams or milestones
-
-Do NOT summarize. Extract the actual content: chapter names, topic names, assignment titles, dates.
-This will be used to generate specific study tasks like "Read Chapter 3: Sorting Algorithms" or "Complete Assignment 2: Graph Problems".`,
-        file_urls: [file_url],
-        model: 'gpt_5_4'
-      });
-
-      if (extraction && typeof extraction === 'string' && extraction.length > 50) {
-        setMaterialsText(prev => {
-          const separator = prev.trim() ? '\n\n---\n\n' : '';
-          return prev + separator + `[Extracted from uploaded file]\n${extraction}`;
-        });
-      }
     } catch (err) {
       console.error(err);
     }

@@ -15,9 +15,9 @@ import { motion } from 'framer-motion';
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 const defaultSchedule = () =>
-Object.fromEntries(
-  DAYS.map((d) => [d, { start: '09:00', end: '18:00', noStudy: false }])
-);
+  Object.fromEntries(
+    DAYS.map((d) => [d, { start: '09:00', end: '18:00', noStudy: false }])
+  );
 
 export default function StudyPreferences() {
   const { planId } = useParams();
@@ -55,7 +55,7 @@ export default function StudyPreferences() {
   };
 
   const activeDays = DAYS.filter((d) => !schedule[d]?.noStudy).length;
-  const progressValue = activeDays > 0 ? Math.min(100, Math.round(activeDays / 5 * 50 + 50)) : 10;
+  const progressValue = activeDays > 0 ? Math.min(100, Math.round((activeDays / 5) * 50 + 50)) : 10;
 
   const handleNext = async () => {
     await base44.entities.StudyPlan.update(planId, {
@@ -78,8 +78,8 @@ export default function StudyPreferences() {
           <StepHeader
             icon={Settings}
             title="Study Preferences"
-            description="Tell me when and how you like to study. Set your availability for each day of the week." />
-          
+            description="Tell me when and how you like to study. Set your availability for each day of the week."
+          />
 
           {/* Progress */}
           <div className="mb-6">
@@ -101,9 +101,9 @@ export default function StudyPreferences() {
                   <div
                     key={day}
                     className={`flex flex-wrap items-center gap-3 p-3 rounded-lg border transition-all ${
-                    isNoStudy ? 'bg-gray-50 border-gray-100 opacity-60' : 'bg-blue-50/30 border-blue-100'}`
-                    }>
-                    
+                      isNoStudy ? 'bg-gray-50 border-gray-100 opacity-60' : 'bg-blue-50/30 border-blue-100'
+                    }`}
+                  >
                     {/* Day label */}
                     <span className="w-24 text-sm font-medium text-gray-700 flex-shrink-0">{day}</span>
 
@@ -115,32 +115,32 @@ export default function StudyPreferences() {
                           type="time"
                           value={schedule[day]?.start || '09:00'}
                           onChange={(e) => setDayField(day, 'start', e.target.value)}
-                          className="h-8 text-sm w-28" />
-                        
+                          className="h-8 text-sm w-28"
+                        />
                       </div>
                       <span className="text-gray-400 text-sm">–</span>
                       <Input
                         type="time"
                         value={schedule[day]?.end || '18:00'}
                         onChange={(e) => setDayField(day, 'end', e.target.value)}
-                        className="h-8 text-sm w-28" />
-                      
+                        className="h-8 text-sm w-28"
+                      />
                     </div>
 
                     {/* No Study toggle */}
                     <button
                       onClick={() => setDayField(day, 'noStudy', !isNoStudy)}
                       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all flex-shrink-0 ${
-                      isNoStudy ?
-                      'bg-red-500 text-white border-red-500' :
-                      'bg-white text-gray-500 border-gray-200 hover:border-red-300 hover:text-red-500'}`
-                      }>
-                      
+                        isNoStudy
+                          ? 'bg-red-500 text-white border-red-500'
+                          : 'bg-white text-gray-500 border-gray-200 hover:border-red-300 hover:text-red-500'
+                      }`}
+                    >
                       <BanIcon className="w-3 h-3" />
                       No Study Day
                     </button>
-                  </div>);
-
+                  </div>
+                );
               })}
             </div>
           </div>
@@ -148,7 +148,7 @@ export default function StudyPreferences() {
           {/* Max hours */}
           <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-6">
             <h3 className="font-semibold text-gray-900 mb-1">Maximum study hours per day</h3>
-            
+            <p className="text-sm text-gray-400 mb-4">I won't plan more than this many hours of studying per day.</p>
             <div className="flex items-center gap-4">
               <Slider
                 value={[maxHours]}
@@ -156,8 +156,8 @@ export default function StudyPreferences() {
                 min={1}
                 max={12}
                 step={1}
-                className="flex-1" />
-              
+                className="flex-1"
+              />
               <span className="text-2xl font-bold text-blue-600 w-16 text-center">{maxHours}h</span>
             </div>
           </div>
@@ -167,7 +167,7 @@ export default function StudyPreferences() {
             <h3 className="font-semibold text-gray-900 mb-1 flex items-center gap-2">
               <Coffee className="w-4 h-4 text-amber-500" /> Break between study blocks
             </h3>
-            
+            <p className="text-sm text-gray-400 mb-4">How long should breaks be between your study sessions?</p>
             <div className="flex items-center gap-4">
               <Slider
                 value={[breakDuration]}
@@ -175,8 +175,8 @@ export default function StudyPreferences() {
                 min={5}
                 max={60}
                 step={5}
-                className="flex-1" />
-              
+                className="flex-1"
+              />
               <span className="text-2xl font-bold text-amber-600 w-20 text-center">{breakDuration}m</span>
             </div>
           </div>
@@ -193,10 +193,10 @@ export default function StudyPreferences() {
         </motion.div>
       </div>
       <ContextChat phase="preferences" planId={planId} suggestions={[
-      "How many hours should I study per day?",
-      "Should I study on weekends?",
-      "How long should my breaks be?"]
-      } />
-    </div>);
-
+        "How many hours should I study per day?",
+        "Should I study on weekends?",
+        "How long should my breaks be?"
+      ]} />
+    </div>
+  );
 }
