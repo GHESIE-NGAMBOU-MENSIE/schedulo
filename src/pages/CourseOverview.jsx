@@ -60,12 +60,12 @@ function CourseCard({ course, onDelete, onSave }) {
         });
         if (result.course_name && result.course_name !== name) setName(result.course_name);
         if (result.credit_points) setCredits(result.credit_points.toString());
-        if (result.course_types?.length) setSelectedTypes(result.course_types.filter(t => COURSE_TYPES.includes(t)));
+        if (result.course_types?.length) setSelectedTypes(result.course_types.filter((t) => COURSE_TYPES.includes(t)));
         if (result.difficulty) setDifficulty(result.difficulty);
         if (result.description) setMaterialsText((prev) => prev || result.description);
-      } catch (err) { console.error('Extraction failed', err); }
+      } catch (err) {console.error('Extraction failed', err);}
       setExtracting(false);
-    } catch (err) { console.error(err); }
+    } catch (err) {console.error(err);}
     setUploading(false);
     e.target.value = '';
   };
@@ -93,8 +93,8 @@ function CourseCard({ course, onDelete, onSave }) {
     <motion.div
       initial={{ opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
-      className="bg-white rounded-xl border border-blue-100 shadow-sm overflow-hidden"
-    >
+      className="bg-white rounded-xl border border-blue-100 shadow-sm overflow-hidden">
+      
       {/* Header row */}
       <div className="flex items-center justify-between p-4 group">
         <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -104,23 +104,23 @@ function CourseCard({ course, onDelete, onSave }) {
           <div className="min-w-0">
             <p className="font-medium text-gray-900 truncate">{course.name}</p>
             <p className="text-xs text-gray-400">
-              {isComplete
-                ? <span className="text-green-600">✓ Details added{course.credit_points ? ` · ${course.credit_points} ECTS` : ''}</span>
-                : 'Tap to add course details'}
+              {isComplete ?
+              <span className="text-green-600">✓ Details added{course.credit_points ? ` · ${course.credit_points} ECTS` : ''}</span> :
+              'Tap to add course details'}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-1">
           <button
             onClick={() => onDelete(course.id)}
-            className="p-2 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
-          >
+            className="p-2 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity">
+            
             <Trash2 className="w-4 h-4 text-red-400" />
           </button>
           <button
             onClick={() => setExpanded((p) => !p)}
-            className="p-2 hover:bg-blue-50 rounded-lg transition-colors"
-          >
+            className="p-2 hover:bg-blue-50 rounded-lg transition-colors">
+            
             {expanded ? <ChevronUp className="w-4 h-4 text-blue-500" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
           </button>
         </div>
@@ -128,21 +128,21 @@ function CourseCard({ course, onDelete, onSave }) {
 
       {/* Expandable detail section */}
       <AnimatePresence>
-        {expanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="overflow-hidden"
-          >
+        {expanded &&
+        <motion.div
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: 'auto', opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          transition={{ duration: 0.2 }}
+          className="overflow-hidden">
+          
             <div className="border-t border-blue-50 p-4 space-y-4 bg-blue-50/20">
-              {extracting && (
-                <div className="flex items-center gap-2 text-sm text-blue-600 bg-blue-50 p-3 rounded-lg">
+              {extracting &&
+            <div className="flex items-center gap-2 text-sm text-blue-600 bg-blue-50 p-3 rounded-lg">
                   <Loader2 className="w-4 h-4 animate-spin" />
                   Extracting course information from your document…
                 </div>
-              )}
+            }
 
               {/* Basic info */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -160,17 +160,17 @@ function CourseCard({ course, onDelete, onSave }) {
               <div>
                 <Label className="text-xs text-gray-600 mb-2 block">Course type (multi-select)</Label>
                 <div className="flex flex-wrap gap-1.5">
-                  {COURSE_TYPES.map((t) => (
-                    <button
-                      key={t}
-                      onClick={() => toggleType(t)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
-                        selectedTypes.includes(t) ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 border border-gray-200 hover:border-blue-300'
-                      }`}
-                    >
+                  {COURSE_TYPES.map((t) =>
+                <button
+                  key={t}
+                  onClick={() => toggleType(t)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                  selectedTypes.includes(t) ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 border border-gray-200 hover:border-blue-300'}`
+                  }>
+                  
                       {t}
                     </button>
-                  ))}
+                )}
                 </div>
               </div>
 
@@ -221,29 +221,29 @@ function CourseCard({ course, onDelete, onSave }) {
                     {uploading ? 'Uploading…' : 'Upload file'}
                   </div>
                 </label>
-                {files.length > 0 && (
-                  <div className="mt-2 space-y-1">
-                    {files.map((f, i) => (
-                      <div key={i} className="flex items-center gap-2 text-xs text-gray-500">
+                {files.length > 0 &&
+              <div className="mt-2 space-y-1">
+                    {files.map((f, i) =>
+                <div key={i} className="flex items-center gap-2 text-xs text-gray-500">
                         <FileText className="w-3.5 h-3.5" />
                         <span className="truncate max-w-xs">{f.split('/').pop()}</span>
                         <button onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-600">Remove</button>
                       </div>
-                    ))}
-                  </div>
                 )}
+                  </div>
+              }
               </div>
 
               {/* Manual description */}
               <div>
                 <Label className="text-xs text-gray-600">Course description / notes <span className="text-gray-400">(optional — if no document uploaded)</span></Label>
                 <Textarea
-                  value={materialsText}
-                  onChange={(e) => setMaterialsText(e.target.value)}
-                  placeholder="Describe the course content, assignments, key topics…"
-                  rows={3}
-                  className="mt-1 text-sm"
-                />
+                value={materialsText}
+                onChange={(e) => setMaterialsText(e.target.value)}
+                placeholder="Describe the course content, assignments, key topics…"
+                rows={3}
+                className="mt-1 text-sm" />
+              
               </div>
 
               <div className="flex justify-end">
@@ -254,10 +254,10 @@ function CourseCard({ course, onDelete, onSave }) {
               </div>
             </div>
           </motion.div>
-        )}
+        }
       </AnimatePresence>
-    </motion.div>
-  );
+    </motion.div>);
+
 }
 
 export default function CourseOverview() {
@@ -306,14 +306,14 @@ export default function CourseOverview() {
   };
 
   const completedCount = courses.filter((c) => c.confirmed).length;
-  const progressValue = courses.length === 0 ? 0 : Math.round((completedCount / courses.length) * 100);
+  const progressValue = courses.length === 0 ? 0 : Math.round(completedCount / courses.length * 100);
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center">
         <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
-      </div>
-    );
+      </div>);
+
   }
 
   return (
@@ -324,8 +324,8 @@ export default function CourseOverview() {
           <StepHeader
             icon={BookOpen}
             title="Your Courses"
-            description="Here are the courses detected from your calendar. Expand each one to add details — the more info you provide, the better your plan."
-          />
+            description="Here are the courses detected from your calendar. Expand each one to add details — the more info you provide, the better your plan." />
+          
 
           {/* Progress */}
           <div className="mb-6">
@@ -336,46 +336,46 @@ export default function CourseOverview() {
             <Progress value={progressValue} className="h-2" />
           </div>
 
-          {courses.length === 0 && (
-            <div className="bg-white rounded-xl border border-blue-100 p-8 text-center mb-6">
+          {courses.length === 0 &&
+          <div className="bg-white rounded-xl border border-blue-100 p-8 text-center mb-6">
               <GraduationCap className="w-12 h-12 text-gray-300 mx-auto mb-3" />
               <p className="text-gray-500 mb-1">No courses detected yet</p>
               <p className="text-sm text-gray-400">Add your courses manually below.</p>
             </div>
-          )}
+          }
 
           <div className="space-y-3 mb-6">
-            {courses.map((course) => (
-              <CourseCard
-                key={course.id}
-                course={course}
-                onDelete={deleteCourse}
-                onSave={saveCourse}
-              />
-            ))}
+            {courses.map((course) =>
+            <CourseCard
+              key={course.id}
+              course={course}
+              onDelete={deleteCourse}
+              onSave={saveCourse} />
+
+            )}
           </div>
 
           {/* Add course */}
           <div className="bg-white rounded-xl border border-dashed border-blue-200 p-4 mb-8">
-            <div className="flex gap-2">
+            <div className="flex gap-2 hidden">
               <Input
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 placeholder="Enter course name…"
-                onKeyDown={(e) => e.key === 'Enter' && addCourse()}
-              />
+                onKeyDown={(e) => e.key === 'Enter' && addCourse()} className="hidden" />
+              
               <Button onClick={addCourse} disabled={!newName.trim()} className="bg-blue-600 hover:bg-blue-700">
                 <Plus className="w-4 h-4 mr-1" /> Add
               </Button>
             </div>
           </div>
 
-          {continueError && (
-            <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 p-3 rounded-lg mb-4 border border-red-100">
+          {continueError &&
+          <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 p-3 rounded-lg mb-4 border border-red-100">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
               {continueError}
             </div>
-          )}
+          }
 
           <div className="flex justify-between items-center">
             <Button variant="ghost" onClick={() => navigate(`/plan/${planId}/preferences`)}>
@@ -388,10 +388,10 @@ export default function CourseOverview() {
         </motion.div>
       </div>
       <ContextChat phase="courses" planId={planId} suggestions={[
-        "How do I add a missing course?",
-        "What should I upload for each course?",
-        "Can I skip adding course details?"
-      ]} />
-    </div>
-  );
+      "How do I add a missing course?",
+      "What should I upload for each course?",
+      "Can I skip adding course details?"]
+      } />
+    </div>);
+
 }
