@@ -35,11 +35,24 @@ export default function Feasibility() {
     const startDate = new Date(p.start_date);
     const endDate = new Date(p.end_date);
     const totalDays = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
-    const totalWeeks = Math.ceil(totalDays / 7);
+    const totalWeeks = Math.max(1, Math.ceil(totalDays / 7));
 
-    const studyDaysPerWeek = (prefs.preferred_days || []).filter(d => !(prefs.no_study_days || []).includes(d)).length;
+    // Calculate weekly available hours from per-day schedule
+    const daySchedule = prefs.schedule || {};
     const maxHoursPerDay = prefs.max_hours || 6;
-    const totalAvailableHours = studyDaysPerWeek * maxHoursPerDay * totalWeeks;
+    const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+    const weeklyAvailableHours = DAYS.reduce((sum, day) => {
+      const dayPref = daySchedule[day];
+      if (!dayPref || dayPref.noStudy) return sum;
+      const [sh, sm] = (dayPref.start || '09:00').split(':').map(Number);
+      const [eh, em] = (dayPref.end || '18:00').split(':').map(Number);
+      const windowHours = Math.max(0, (eh + em / 60) - (sh + sm / 60));
+      return sum + Math.min(windowHours, maxHoursPerDay);
+    }, 0);
+
+    const studyDaysPerWeek = DAYS.filter(day => daySchedule[day] && !daySchedule[day].noStudy).length;
+    const totalAvailableHours = weeklyAvailableHours * totalWeeks;
     const totalWorkload = tasks.reduce((sum, t) => sum + (t.estimated_hours || 0), 0);
     const hoursPerWeek = totalWorkload / totalWeeks;
 
@@ -58,7 +71,7 @@ export default function Feasibility() {
     });
 
     for (let w = 0; w < totalWeeks; w++) {
-      if (hoursPerWeek > maxHoursPerDay * studyDaysPerWeek) {
+      if (hoursPerWeek > weeklyAvailableHours) {
         overloadedWeeks.push(w + 1);
       }
     }
@@ -87,10 +100,10 @@ export default function Feasibility() {
       suggestions.push('Prioritize tasks with close deadlines.');
     }
 
-    if (hoursPerWeek > maxHoursPerDay * studyDaysPerWeek) {
+    if (hoursPerWeek > weeklyAvailableHours) {
       if (status === 'feasible') status = 'warning';
-      issues.push(`Average weekly workload (${hoursPerWeek.toFixed(1)}h) exceeds your daily max × study days.`);
-      suggestions.push('Increase max study hours per day.');
+      issues.push(`Average weekly workload (${hoursPerWeek.toFixed(1)}h) exceeds your weekly available hours (${weeklyAvailableHours.toFixed(1)}h).`);
+      suggestions.push('Increase your daily study window or add more study days.');
     }
 
     const analysisResult = {
