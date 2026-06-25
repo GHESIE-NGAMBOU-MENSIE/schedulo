@@ -7,7 +7,7 @@ import { motion } from 'framer-motion';
 
 const phases = [
 { icon: Calendar, title: 'Planning Setup', desc: 'Set your study period, import your calendar, and define your preferences.' },
-{ icon: BookOpen, title: 'Course Information', desc: "Add your course in , upload materials, and let me extract tasks and deadlines." },
+{ icon: BookOpen, title: 'Course Information', desc: "Add your course information, upload materials, and let me extract tasks, deadlines, and workload estimates." },
 { icon: BarChart3, title: 'Plan Generation', desc: 'I\'ll check feasibility and create a personalized, time-blocked study plan.' },
 { icon: RefreshCw, title: 'Active Semester', desc: 'Use your plan daily. Tell me when things change, and I\'ll adapt it for you.' }];
 
