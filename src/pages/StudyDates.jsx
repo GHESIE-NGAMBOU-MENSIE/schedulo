@@ -93,32 +93,37 @@ function parseICS(text, startDate, endDate) {
     }
   }
 
-  // Deduplicate recurring by name; collect non-recurring
-  const recurringMap = new Map();
-  const nonRecurring = [];
+  // Deduplicate: one entry per unique name (handles both RRULE-based and pre-expanded recurring events)
+  const eventMap = new Map();
   const start = startDate ? new Date(startDate) : new Date('2000-01-01');
   const end = endDate ? new Date(endDate) : new Date('2099-12-31');
 
   for (const ev of rawEvents) {
-    const evDate = ev.date ? new Date(ev.date) : null;
-    if (ev.is_recurring) {
-      const name = ev.name || 'Untitled';
-      if (!recurringMap.has(name)) {
-        recurringMap.set(name, { ...ev });
-      } else {
-        const existing = recurringMap.get(name);
-        if (ev.date && (!existing.end_occurrence || ev.date > existing.end_occurrence)) {
-          existing.end_occurrence = ev.date;
-        }
+    const name = ev.name || 'Untitled';
+    if (!eventMap.has(name)) {
+      eventMap.set(name, { ...ev });
+    } else {
+      const existing = eventMap.get(name);
+      // Track earliest start and latest end across all occurrences
+      if (ev.date && (!existing.date || ev.date < existing.date)) {
+        existing.date = ev.date;
       }
-    } else if (evDate && evDate >= start && evDate <= end) {
-      nonRecurring.push(ev);
+      if (ev.date && (!existing.end_occurrence || ev.date > existing.end_occurrence)) {
+        existing.end_occurrence = ev.date;
+      }
+      if (ev.is_recurring) existing.is_recurring = true;
+      if (ev.rrule_day && ev.rrule_day !== 'Flexible') existing.rrule_day = ev.rrule_day;
+      if (ev.rrule_until) existing.rrule_until = ev.rrule_until;
     }
   }
 
   const result = [];
-  for (const [, ev] of recurringMap) {
+  for (const [, ev] of eventMap) {
     const type = guessType(ev.name || '');
+    const isRecurring = !!ev.is_recurring;
+    const evDate = ev.date ? new Date(ev.date) : null;
+    // For single non-recurring events, filter by study period
+    if (!isRecurring && evDate && (evDate < start || evDate > end)) continue;
     result.push({
       name: ev.name || 'Untitled Event',
       description: ev.description || '',
@@ -129,22 +134,7 @@ function parseICS(text, startDate, endDate) {
       end_time: ev.end_time || '',
       day_of_week: ev.rrule_day || 'Flexible',
       is_course: isCourse(type),
-      is_recurring: true
-    });
-  }
-  for (const ev of nonRecurring) {
-    const type = guessType(ev.name || '');
-    result.push({
-      name: ev.name || 'Untitled Event',
-      description: ev.description || '',
-      type,
-      start_date: ev.date || '',
-      end_date: ev.date || '',
-      start_time: ev.start_time || '',
-      end_time: ev.end_time || '',
-      day_of_week: ev.rrule_day || 'Flexible',
-      is_course: isCourse(type),
-      is_recurring: false
+      is_recurring: isRecurring
     });
   }
   return result;
@@ -164,6 +154,7 @@ export default function StudyDates() {
   const [manualErrors, setManualErrors] = useState({});
   const [uploading, setUploading] = useState(false);
   const [errors, setErrors] = useState({});
+  const [showBanner, setShowBanner] = useState(true);
 
   useEffect(() => {
     const load = async () => {
@@ -512,13 +503,18 @@ export default function StudyDates() {
           </div>
         </motion.div>
       </div>
-      {/* Permanent helper banner */}
-      <div className="fixed bottom-24 right-6 z-40 max-w-xs">
-        <div className="bg-blue-600 text-white text-sm px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2 cursor-pointer hover:bg-blue-700 transition-colors" onClick={() => document.querySelector('[data-chat-toggle]')?.click()}>
-          <span>👋</span>
-          <span>Hi! Click the chat button below if you have any questions while creating your study plan.</span>
+      {/* Helper banner */}
+      {showBanner && (
+        <div className="fixed bottom-24 right-6 z-40 max-w-xs">
+          <div className="bg-blue-600 text-white text-sm px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2">
+            <span>👋</span>
+            <span className="flex-1">Hi! Click the chat button below if you have any questions.</span>
+            <button onClick={() => setShowBanner(false)} className="ml-1 hover:bg-blue-700 rounded-full p-0.5 flex-shrink-0 transition-colors">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
-      </div>
+      )}
       <ContextChat phase="dates" planId={planId} suggestions={[
         "What should I upload here?",
         "What is an .ics file?",

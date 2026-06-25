@@ -24,6 +24,7 @@ export default function TaskExtraction() {
   const [activeCourse, setActiveCourse] = useState(0);
   const [showAddTask, setShowAddTask] = useState(false);
   const [newTask, setNewTask] = useState({ title: '', task_type: 'reading', deadline: '', estimated_hours: 2, priority: 'medium' });
+  const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -218,12 +219,16 @@ IMPORTANT: Be specific. Use the actual chapter names, topic names, exercise numb
   };
 
   const confirmAll = async () => {
-    const allTasks = Object.values(tasks).flat();
-    for (const t of allTasks) {
-      await base44.entities.StudyTask.update(t.id, { confirmed: true });
+    if (confirming) return;
+    setConfirming(true);
+    try {
+      await base44.entities.StudyTask.updateMany({ plan_id: planId }, { $set: { confirmed: true } });
+      await base44.entities.StudyPlan.update(planId, { phase: 'generation', step: 7 });
+      navigate(`/plan/${planId}/feasibility`);
+    } catch (e) {
+      console.error(e);
+      setConfirming(false);
     }
-    await base44.entities.StudyPlan.update(planId, { phase: 'generation', step: 7 });
-    navigate(`/plan/${planId}/feasibility`);
   };
 
   const currentCourse = courses[activeCourse];
@@ -394,8 +399,8 @@ IMPORTANT: Be specific. Use the actual chapter names, topic names, exercise numb
                 <Button variant="ghost" onClick={() => navigate(`/plan/${planId}/courses`)}>
                   <ArrowLeft className="w-4 h-4 mr-1" /> Back
                 </Button>
-                <Button onClick={confirmAll} className="bg-blue-600 hover:bg-blue-700">
-                  Confirm course information <ArrowRight className="w-4 h-4 ml-1" />
+                <Button onClick={confirmAll} disabled={confirming} className="bg-blue-600 hover:bg-blue-700">
+                  {confirming ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Confirming...</> : <>Confirm & continue <ArrowRight className="w-4 h-4 ml-1" /></>}
                 </Button>
               </div>
             </>
