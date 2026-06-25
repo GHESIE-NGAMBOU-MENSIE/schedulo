@@ -50,36 +50,76 @@ export default function TaskExtraction() {
     const plan = await base44.entities.StudyPlan.get(planId);
 
     for (const course of courses) {
-      const prompt = `You are a study planning assistant. Extract concrete study tasks from this course information.
+      const prompt = `You are a study planning assistant. Your job is to extract CONCRETE, SPECIFIC, ACTIONABLE study tasks from the course information below.
 
-IMPORTANT: Today's planning reference date is 2026-04-01. Use this as "today" for all deadline and scheduling decisions.
+PLANNING REFERENCE DATE: 2026-04-01 (treat this as today)
+STUDY PERIOD: ${plan.start_date} to ${plan.end_date}
 
-Course: ${course.name}
-Type: ${(course.course_type || []).join(', ')}
-Credit Points: ${course.credit_points || 'unknown'}
-Exam Date: ${course.exam_date || 'unknown'}
-Description: ${course.description || 'No description'}
-Difficulty: ${course.difficulty || 'medium'}
-Familiarity: ${course.familiarity || 'medium'}
-Priority: ${course.priority || 'medium'}
-Study Period: ${plan.start_date} to ${plan.end_date}
-Course Materials/Syllabus: ${course.materials_text || 'No materials provided'}
+COURSE DETAILS:
+- Name: ${course.name}
+- Type: ${(course.course_type || []).join(', ')}
+- Credit Points: ${course.credit_points || 'unknown'}
+- Exam Date: ${course.exam_date || 'unknown'}
+- Description: ${course.description || 'No description'}
+- Difficulty: ${course.difficulty || 'medium'}
+- Familiarity: ${course.familiarity || 'medium'}
+- Priority: ${course.priority || 'medium'}
+- Course Materials/Syllabus: ${course.materials_text || 'No materials provided'}
 
-Based on this information, generate 4-8 concrete study tasks. Each task should be specific and actionable.
+## TASK EXTRACTION RULES
 
-For study time estimation, consider:
-- 1 credit point ≈ 25-30 hours total workload
-- Difficulty adjustment: easy=-20%, medium=0%, difficult=+30%
-- Familiarity adjustment: high=-20%, medium=0%, low=+25%
+DO NOT limit tasks to 5. Return AS MANY tasks as the material reasonably implies.
 
-Return a JSON object with a "tasks" array, where each task has:
-- title (string, specific and actionable)
-- task_type (one of: reading, assignment, exercise, revision, test, project_work)
-- deadline (date string YYYY-MM-DD or null)
-- estimated_hours (number, realistic)
-- priority (low/medium/high)
-- dependencies (array of task titles this depends on, or empty array)
-- suggested_phase (string: "early semester", "mid semester", "before exam", "throughout")`;
+1. CHAPTERS/TOPICS → create one "Read [chapter/topic name]" reading task each.
+2. EXERCISES/EXERCISE SHEETS → create one "Review and practice [exercise name]" exercise task each.
+3. ASSIGNMENTS → create "Work on assignment [N]" (assignment type) + optionally "Review assignment [N]" (revision type).
+4. QUIZZES/TESTS → create "Prepare for quiz/test on [topic]" (test type).
+5. EXAM → create "Revise key concepts for exam" (revision) + "Prepare for final exam" (test).
+6. PROJECT MILESTONES/PHASES → create one "project_work" task per milestone.
+
+## PROJECT/RESEARCH TYPE DETECTION
+
+Detect the course type from name, description, and materials:
+- SLR / systematic literature review / literature review → literature-review project
+- DSR / design science research / artifact / prototype / design requirements / evaluation → design-science project  
+- implementation / software prototype / development / application → implementation project
+- seminar paper / presentation / academic paper → seminar/writing course
+
+For LITERATURE REVIEW projects, generate tasks such as:
+Refine research question, Define search terms, Define inclusion/exclusion criteria, Select databases, Conduct literature search, Screen search results, Read selected papers, Extract relevant data, Synthesize findings, Write literature review section, Revise literature review, Prepare final submission/presentation.
+
+For DESIGN SCIENCE projects, generate tasks such as:
+Refine research question, Understand DSR approach, Define problem context, Identify stakeholder needs, Derive design requirements, Design initial artifact concept, Develop prototype, Plan evaluation, Conduct evaluation, Analyze evaluation results, Derive design implications, Write methodology section, Write artifact/design section, Write evaluation section, Revise final report, Prepare final submission/presentation.
+
+For IMPLEMENTATION projects, generate tasks such as:
+Define requirements, Design solution concept, Set up development environment, Implement core functionality, Test functionality, Fix issues, Document implementation, Prepare final presentation, Submit final version.
+
+For SEMINAR/WRITING courses, generate tasks such as:
+Choose/refine topic, Search literature, Read key sources, Create outline, Write first draft, Revise draft, Prepare presentation, Practice presentation, Submit final version.
+
+## TIME ESTIMATION
+
+Total workload = credit_points × 27 hours
+- Difficulty: easy=−20%, medium=0%, difficult=+30%
+- Familiarity: high=−20%, medium=0%, low=+25%
+Distribute this total across all generated tasks proportionally.
+
+## TASK ORDERING
+
+Order tasks by learning sequence — what must be done first comes first in the list. The order must reflect a logical study progression.
+
+## OUTPUT FORMAT
+
+Return JSON with a "tasks" array. Each task:
+- title: specific and action-oriented (e.g. "Read chapter 3 – Decision Trees", not "Study material")
+- task_type: one of reading, assignment, exercise, revision, test, project_work
+- deadline: YYYY-MM-DD or null (use exam_date for final revision/exam tasks)
+- estimated_hours: realistic number
+- priority: low / medium / high
+- dependencies: array of task titles this depends on (empty array if none)
+- suggested_phase: "early semester" | "mid semester" | "before exam" | "throughout"
+
+IMPORTANT: Be specific. Use the actual chapter names, topic names, exercise numbers, and milestone names from the materials. Never generate vague tasks like "Study the material" or "Work on course".`;
 
       try {
         const result = await base44.integrations.Core.InvokeLLM({
