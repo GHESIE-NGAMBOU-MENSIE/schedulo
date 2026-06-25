@@ -18,7 +18,6 @@ export default function Onboarding() {
   const [showChat, setShowChat] = useState(false);
 
   const handleStart = async () => {
-    setShowChat(true);
     try {
       const plan = await base44.entities.StudyPlan.create({
         name: 'My Study Plan',

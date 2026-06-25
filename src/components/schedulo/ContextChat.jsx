@@ -95,7 +95,7 @@ Respond helpfully, concisely, and in a friendly tone. Use short paragraphs. If y
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {messages.length === 0 && (
           <div className="space-y-3">
-            <p className="text-sm text-gray-500 text-center">Hi! I'm here to help. Ask me anything about this step.</p>
+            <p className="text-sm text-gray-500 text-center">👋 Hi! I'm here if you have any questions while creating your study plan. Feel free to ask for help at any time.</p>
             <div className="space-y-2">
               {defaultSuggestions.map((s, i) => (
                 <button
