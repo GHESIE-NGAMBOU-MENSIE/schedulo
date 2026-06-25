@@ -137,10 +137,14 @@ export default function StudyDates() {
 
   useEffect(() => {
     const load = async () => {
-      const p = await base44.entities.StudyPlan.get(planId);
-      if (p.start_date) setStartDate(p.start_date);
-      if (p.end_date) setEndDate(p.end_date);
-      if (p.calendar_events?.length) setEvents(p.calendar_events);
+      try {
+        const p = await base44.entities.StudyPlan.get(planId);
+        if (p.start_date) setStartDate(p.start_date);
+        if (p.end_date) setEndDate(p.end_date);
+        if (p.calendar_events?.length) setEvents(p.calendar_events);
+      } catch (e) {
+        navigate('/');
+      }
     };
     load();
   }, [planId]);

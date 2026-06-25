@@ -21,8 +21,12 @@ export default function Feasibility() {
   }, [planId]);
 
   const loadPlan = async () => {
-    const p = await base44.entities.StudyPlan.get(planId);
-    setPlan(p);
+    try {
+      const p = await base44.entities.StudyPlan.get(planId);
+      setPlan(p);
+    } catch (e) {
+      navigate('/');
+    }
   };
 
   const runCheck = async () => {

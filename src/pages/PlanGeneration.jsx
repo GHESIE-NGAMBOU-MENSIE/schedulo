@@ -31,12 +31,16 @@ export default function PlanGeneration() {
   useEffect(() => { loadData(); }, [planId]);
 
   const loadData = async () => {
-    const p = await base44.entities.StudyPlan.get(planId);
-    setPlan(p);
-    const t = await base44.entities.StudyTask.filter({ plan_id: planId });
-    setTasks(t);
-    if (t.some(task => task.scheduled_date)) setGenerated(true);
-    if (p.scenarios?.length) setScenarios(p.scenarios);
+    try {
+      const p = await base44.entities.StudyPlan.get(planId);
+      setPlan(p);
+      const t = await base44.entities.StudyTask.filter({ plan_id: planId });
+      setTasks(t);
+      if (t.some(task => task.scheduled_date)) setGenerated(true);
+      if (p.scenarios?.length) setScenarios(p.scenarios);
+    } catch (e) {
+      navigate('/');
+    }
   };
 
   const generatePlan = async () => {

@@ -28,7 +28,13 @@ export default function StudyPreferences() {
 
   useEffect(() => {
     const load = async () => {
-      const p = await base44.entities.StudyPlan.get(planId);
+      let p;
+      try {
+        p = await base44.entities.StudyPlan.get(planId);
+      } catch (e) {
+        navigate('/');
+        return;
+      }
       if (p.preferences?.schedule) {
         setSchedule(p.preferences.schedule);
       } else if (p.preferences?.preferred_days || p.preferences?.no_study_days) {

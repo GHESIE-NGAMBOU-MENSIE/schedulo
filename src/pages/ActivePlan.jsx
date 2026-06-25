@@ -26,10 +26,15 @@ export default function ActivePlan() {
 
   const loadData = async () => {
     setLoading(true);
-    const p = await base44.entities.StudyPlan.get(planId);
-    setPlan(p);
-    const t = await base44.entities.StudyTask.filter({ plan_id: planId });
-    setTasks(t);
+    try {
+      const p = await base44.entities.StudyPlan.get(planId);
+      setPlan(p);
+      const t = await base44.entities.StudyTask.filter({ plan_id: planId });
+      setTasks(t);
+    } catch (e) {
+      navigate('/');
+      return;
+    }
     setLoading(false);
   };
 
