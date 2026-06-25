@@ -45,45 +45,53 @@ export default function PlanGeneration() {
 
   const generatePlan = async () => {
     setGenerating(true);
-    const p = await base44.entities.StudyPlan.get(planId);
-    const allTasks = await base44.entities.StudyTask.filter({ plan_id: planId });
-    const prefs = p.preferences || {};
-    const calEvents = p.calendar_events || [];
+    try {
+      const p = await base44.entities.StudyPlan.get(planId);
+      const allTasks = await base44.entities.StudyTask.filter({ plan_id: planId });
+      const prefs = p.preferences || {};
+      const calEvents = p.calendar_events || [];
 
-    const prompt = `You are a study plan scheduler. Generate a time-blocked study schedule.
+      // Parse the per-day schedule structure stored in preferences
+      const daySchedule = prefs.schedule || {};
+      const studyDays = Object.entries(daySchedule)
+        .filter(([, v]) => !v.noStudy)
+        .map(([day]) => day);
+      const noStudyDays = Object.entries(daySchedule)
+        .filter(([, v]) => v.noStudy)
+        .map(([day]) => day);
+      // Use the first study day's window as the general window (they're typically the same)
+      const firstStudyDay = studyDays[0] ? daySchedule[studyDays[0]] : null;
+      const studyStart = firstStudyDay?.start || prefs.preferred_start || '09:00';
+      const studyEnd = firstStudyDay?.end || prefs.preferred_end || '18:00';
 
-IMPORTANT: Today's planning reference date is ${PLANNING_REFERENCE_DATE_STR}. Use this as "today" for all scheduling decisions. Do not treat any dates within the semester as past.
+      const prompt = `You are a study plan scheduler. Generate a time-blocked study schedule.
+
+IMPORTANT: Today's planning reference date is ${PLANNING_REFERENCE_DATE_STR}. Use this as "today" for all scheduling decisions. Schedule all tasks AFTER this date within the study period.
 
 Study Period: ${p.start_date} to ${p.end_date}
-Preferred Study Days: ${(prefs.preferred_days || []).join(', ')}
-No-study Days: ${(prefs.no_study_days || []).join(', ')}
-Study Window: ${prefs.preferred_start || '09:00'} to ${prefs.preferred_end || '18:00'}
+Available Study Days (schedule ONLY on these days): ${studyDays.join(', ') || 'Tuesday, Wednesday, Thursday, Friday, Saturday'}
+No-study Days (never schedule on these): ${noStudyDays.join(', ') || 'Monday, Sunday'}
+Daily Study Window: ${studyStart} to ${studyEnd}
 Max Hours Per Day: ${prefs.max_hours || 6}
 Break Duration: ${prefs.break_duration || 15} minutes
 
-Fixed Calendar Events (blocked times):
-${calEvents.map(e => `- ${e.name}: ${e.date} ${e.start_time}-${e.end_time} (${e.recurrence})`).join('\n')}
+Fixed Calendar Events (blocked times — do not overlap):
+${calEvents.length > 0 ? calEvents.slice(0, 30).map(e => `- ${e.name}: ${e.start_date || e.date} ${e.start_time || ''}-${e.end_time || ''}`).join('\n') : 'None'}
 
-Tasks to schedule:
-${allTasks.map(t => `- ID: ${t.id} | "${t.title}" (${t.course_name}) | ${t.estimated_hours}h | Priority: ${t.priority} | Deadline: ${t.deadline || 'none'} | Type: ${t.task_type}`).join('\n')}
+Tasks to schedule (use the exact task_id string):
+${allTasks.map(t => `- task_id: "${t.id}" | "${t.title}" (${t.course_name || 'General'}) | ${t.estimated_hours || 2}h | Priority: ${t.priority || 'medium'} | Deadline: ${t.deadline || 'end of semester'} | Type: ${t.task_type || 'reading'}`).join('\n')}
 
 Rules:
-1. Respect fixed events, no-study days, and study window.
-2. Max ${prefs.max_hours || 6} study hours per day.
-3. Include ${prefs.break_duration || 15} minute breaks between study blocks.
-4. Prioritize tasks by deadline proximity, then by priority level.
-5. Distribute workload evenly across weeks.
-6. Keep study blocks between 1-3 hours each. Split larger tasks into multiple blocks.
-7. For each scheduled block, provide a brief explanation of why it's placed there.
+1. Schedule EVERY task listed above — every task_id must appear in the schedule array.
+2. Only schedule on the Available Study Days listed above.
+3. Respect the daily study window (${studyStart}–${studyEnd}) and max ${prefs.max_hours || 6} hours/day.
+4. Split tasks > 3 hours into multiple blocks on different days.
+5. Prioritize by deadline proximity, then priority level.
+6. Distribute evenly across weeks — do not pile everything at the end.
+7. Use YYYY-MM-DD for dates and HH:MM (24h) for times.
 
-Return JSON with a "schedule" array where each item has:
-- task_id (string)
-- scheduled_date (YYYY-MM-DD)
-- scheduled_start (HH:MM)
-- scheduled_end (HH:MM)
-- explanation (why this time slot)`;
+Return a JSON object with a "schedule" array. Each entry must have: task_id, scheduled_date, scheduled_start, scheduled_end, explanation.`;
 
-    try {
       const result = await base44.integrations.Core.InvokeLLM({
         prompt,
         response_json_schema: {
@@ -99,37 +107,58 @@ Return JSON with a "schedule" array where each item has:
                   scheduled_start: { type: "string" },
                   scheduled_end: { type: "string" },
                   explanation: { type: "string" }
-                }
+                },
+                required: ["task_id", "scheduled_date", "scheduled_start", "scheduled_end"]
               }
             }
-          }
+          },
+          required: ["schedule"]
         },
         model: 'claude_sonnet_4_6'
       });
 
       const schedule = result.schedule || [];
+      console.log(`AI returned ${schedule.length} scheduled blocks`);
+
+      // Validate and save each scheduled block
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      const timeRegex = /^\d{2}:\d{2}$/;
+      let savedCount = 0;
+
       for (const item of schedule) {
+        if (!item.task_id || !item.scheduled_date || !item.scheduled_start || !item.scheduled_end) continue;
+        // Normalize time format (strip seconds if present e.g. "09:00:00" -> "09:00")
+        const normStart = item.scheduled_start.substring(0, 5);
+        const normEnd = item.scheduled_end.substring(0, 5);
+        if (!dateRegex.test(item.scheduled_date) || !timeRegex.test(normStart) || !timeRegex.test(normEnd)) {
+          console.warn('Invalid format, skipping:', item);
+          continue;
+        }
         const task = allTasks.find(t => t.id === item.task_id);
         if (task) {
           await base44.entities.StudyTask.update(task.id, {
             scheduled_date: item.scheduled_date,
-            scheduled_start: item.scheduled_start,
-            scheduled_end: item.scheduled_end,
-            explanation: item.explanation
+            scheduled_start: normStart,
+            scheduled_end: normEnd,
+            explanation: item.explanation || ''
           });
+          savedCount++;
+        } else {
+          console.warn('No matching task for task_id:', item.task_id);
         }
       }
 
+      console.log(`Saved ${savedCount} scheduled blocks to database`);
+
       const updatedTasks = await base44.entities.StudyTask.filter({ plan_id: planId });
       setTasks(updatedTasks);
-      setScenarios([{ name: 'Scenario 1', tasks: updatedTasks.map(t => ({ id: t.id, scheduled_date: t.scheduled_date, scheduled_start: t.scheduled_start, scheduled_end: t.scheduled_end })) }]);
       await base44.entities.StudyPlan.update(planId, {
         scenarios: [{ name: 'Scenario 1', created: new Date().toISOString() }],
         step: 8
       });
       setGenerated(true);
     } catch (e) {
-      console.error(e);
+      console.error('Plan generation failed:', e);
     }
     setGenerating(false);
   };
