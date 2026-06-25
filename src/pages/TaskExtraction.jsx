@@ -42,15 +42,18 @@ export default function TaskExtraction() {
       });
       setTasks(grouped);
       setExtracted(true);
+    } else {
+      // Auto-extract on first visit
+      extractTasksForCourses(courseList);
     }
   };
 
-  const extractTasks = async () => {
+  const extractTasksForCourses = async (courseList) => {
     setExtracting(true);
     const newTasks = {};
     const plan = await base44.entities.StudyPlan.get(planId);
 
-    for (const course of courses) {
+    for (const course of courseList) {
       const prompt = `You are a study planning assistant. Your job is to extract CONCRETE, SPECIFIC, ACTIONABLE study tasks from the course information below.
 
 PLANNING REFERENCE DATE: 2026-04-01 (treat this as today)
@@ -178,6 +181,8 @@ IMPORTANT: Be specific. Use the actual chapter names, topic names, exercise numb
     setExtracting(false);
   };
 
+  const extractTasks = () => extractTasksForCourses(courses);
+
   const updateTask = async (taskId, updates) => {
     await base44.entities.StudyTask.update(taskId, updates);
     const courseId = Object.keys(tasks).find(cId => tasks[cId].some(t => t.id === taskId));
@@ -246,24 +251,13 @@ IMPORTANT: Be specific. Use the actual chapter names, topic names, exercise numb
             description="I'll analyze your course materials and create specific study tasks with time estimates. Review and adjust them as needed."
           />
 
-          {!extracted && (
+          {!extracted && extracting && (
             <div className="bg-white rounded-xl border border-blue-100 p-8 shadow-sm text-center mb-6">
-              {extracting ? (
-                <div className="space-y-3">
-                  <Loader2 className="w-10 h-10 animate-spin text-blue-500 mx-auto" />
-                  <p className="text-gray-600 font-medium">Analyzing your courses and extracting tasks...</p>
-                  <p className="text-sm text-gray-400">This may take a moment.</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <ListChecks className="w-10 h-10 text-blue-400 mx-auto" />
-                  <p className="text-gray-600">Ready to extract study tasks from your {courses.length} course(s).</p>
-                  <p className="text-sm text-gray-400">I'll create tasks based on your course information, materials, credit points, and difficulty levels.</p>
-                  <Button onClick={extractTasks} className="bg-blue-600 hover:bg-blue-700 mt-2">
-                    Extract tasks now
-                  </Button>
-                </div>
-              )}
+              <div className="space-y-3">
+                <Loader2 className="w-10 h-10 animate-spin text-blue-500 mx-auto" />
+                <p className="text-gray-600 font-medium">Analyzing your courses and extracting tasks...</p>
+                <p className="text-sm text-gray-400">This may take a moment.</p>
+              </div>
             </div>
           )}
 
