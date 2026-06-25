@@ -356,8 +356,7 @@ export default function CourseOverview() {
           </div>
 
           {/* Add course */}
-          <div className="bg-white rounded-xl border border-dashed border-blue-200 p-4 mb-8 hidden">
-            
+          
 
 
 
@@ -367,8 +366,9 @@ export default function CourseOverview() {
 
 
 
-            
-          </div>
+
+
+          
 
           {continueError &&
           <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 p-3 rounded-lg mb-4 border border-red-100">
