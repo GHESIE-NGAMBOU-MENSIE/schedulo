@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
-import { Calendar, List, ArrowLeft, Filter, CheckCircle, Clock, AlertCircle, Loader2, RotateCcw, Info, ChevronDown, ChevronUp } from 'lucide-react';
+import { Calendar, List, ArrowLeft, CheckCircle, AlertCircle, Loader2, RotateCcw, Info, ChevronDown, ChevronUp } from 'lucide-react';
 import { PLANNING_REFERENCE_DATE } from '@/lib/planningDate';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -10,6 +10,13 @@ import StepHeader from '@/components/schedulo/StepHeader';
 import ContextChat from '@/components/schedulo/ContextChat';
 import { scheduleTasksEngine, buildBusyMapPublic, findConflict } from '@/lib/schedulerEngine';
 import { motion } from 'framer-motion';
+
+function parseDate(str) {
+  if (!str) return null;
+  const s = str.includes('T') ? str : str + 'T00:00:00';
+  const d = new Date(s);
+  return isNaN(d) ? null : d;
+}
 
 export default function PlanGeneration() {
   const { planId } = useParams();
@@ -22,8 +29,8 @@ export default function PlanGeneration() {
   const [view, setView] = useState('calendar');
   const [filter, setFilter] = useState('all');
   const [weekOffset, setWeekOffset] = useState(0);
-  const [debugInfo, setDebugInfo] = useState(null);
-  const [showDebug, setShowDebug] = useState(false);
+  const [validationSummary, setValidationSummary] = useState(null);
+  const [showValidation, setShowValidation] = useState(false);
   const [unscheduledTasks, setUnscheduledTasks] = useState([]);
   const [conflicts, setConflicts] = useState([]);
   const [tooltip, setTooltip] = useState(null); // {task, x, y}
@@ -78,7 +85,7 @@ export default function PlanGeneration() {
         p.end_date
       );
 
-      const { scheduled, unscheduled, totalSlots, totalFreeMinutes } = result;
+      const { scheduled, unscheduled, totalSlots, totalFreeMinutes, weeklyStats, weeks } = result;
 
       // Save scheduled blocks to DB
       let savedCount = 0;
@@ -120,19 +127,21 @@ export default function PlanGeneration() {
       }
       setConflicts(foundConflicts);
 
-      // Debug info
-      const withDate = updatedTasks.filter(t => t.scheduled_date);
-      const withStart = updatedTasks.filter(t => t.scheduled_start);
-      const withEnd = updatedTasks.filter(t => t.scheduled_end);
-      setDebugInfo({
-        totalExtracted: allTasks.length,
-        totalSlots,
-        totalFreeHours: Math.round(totalFreeMinutes / 60),
+      // Validation summary
+      const allScheduledDates = updatedTasks.filter(t => t.scheduled_date).map(t => t.scheduled_date).sort();
+      const activeCourses = [...new Set(allTasks.map(t => t.course_name || t.course_id).filter(Boolean))];
+      setValidationSummary({
+        totalTasks: allTasks.length,
         scheduledCount: savedCount,
         unscheduledCount: unscheduled.length,
-        missingDate: allTasks.length - withDate.length,
-        missingStart: allTasks.length - withStart.length,
-        missingEnd: allTasks.length - withEnd.length,
+        totalStudyDays: totalSlots,
+        totalFreeHours: Math.round(totalFreeMinutes / 60),
+        totalWeeks: weeks ? weeks.length : 0,
+        activeCourses,
+        firstScheduledDate: allScheduledDates[0] || null,
+        lastScheduledDate: allScheduledDates[allScheduledDates.length - 1] || null,
+        planEndDate: p.end_date,
+        weeklyStats: weeklyStats || [],
       });
 
       await base44.entities.StudyPlan.update(planId, {
@@ -312,27 +321,65 @@ export default function PlanGeneration() {
                 </div>
               )}
 
-              {/* Debug summary */}
-              {debugInfo && (
+              {/* Validation summary */}
+              {validationSummary && (
                 <div className="mb-4">
                   <button
-                    onClick={() => setShowDebug(v => !v)}
+                    onClick={() => setShowValidation(v => !v)}
                     className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600"
                   >
                     <Info className="w-3.5 h-3.5" />
-                    Debug summary
-                    {showDebug ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                    Plan validation summary
+                    {showValidation ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                   </button>
-                  {showDebug && (
-                    <div className="mt-2 bg-gray-50 border border-gray-200 rounded-xl p-4 text-xs text-gray-600 grid grid-cols-2 sm:grid-cols-4 gap-3">
-                      <div><p className="font-semibold text-gray-800">{debugInfo.totalExtracted}</p><p>Total tasks</p></div>
-                      <div><p className="font-semibold text-gray-800">{debugInfo.totalSlots}</p><p>Available study days</p></div>
-                      <div><p className="font-semibold text-gray-800">{debugInfo.totalFreeHours}h</p><p>Total free time</p></div>
-                      <div><p className="font-semibold text-gray-800">{debugInfo.scheduledCount}</p><p>Scheduled blocks</p></div>
-                      <div><p className="font-semibold text-gray-800">{debugInfo.unscheduledCount}</p><p>Unscheduled tasks</p></div>
-                      <div><p className={`font-semibold ${debugInfo.missingDate > 0 ? 'text-red-600' : 'text-green-600'}`}>{debugInfo.missingDate}</p><p>Missing date</p></div>
-                      <div><p className={`font-semibold ${debugInfo.missingStart > 0 ? 'text-red-600' : 'text-green-600'}`}>{debugInfo.missingStart}</p><p>Missing start time</p></div>
-                      <div><p className={`font-semibold ${debugInfo.missingEnd > 0 ? 'text-red-600' : 'text-green-600'}`}>{debugInfo.missingEnd}</p><p>Missing end time</p></div>
+                  {showValidation && (
+                    <div className="mt-2 space-y-3">
+                      {/* Overview stats */}
+                      <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-xs text-gray-600 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div><p className="font-semibold text-gray-800">{validationSummary.activeCourses.length}</p><p>Active courses</p></div>
+                        <div><p className="font-semibold text-gray-800">{validationSummary.totalWeeks}</p><p>Study weeks</p></div>
+                        <div><p className="font-semibold text-gray-800">{validationSummary.scheduledCount}/{validationSummary.totalTasks}</p><p>Tasks scheduled</p></div>
+                        <div><p className="font-semibold text-gray-800">{validationSummary.totalFreeHours}h</p><p>Total free time</p></div>
+                        <div><p className="font-semibold text-gray-800 text-xs">{validationSummary.firstScheduledDate || '—'}</p><p>First task date</p></div>
+                        <div><p className="font-semibold text-gray-800 text-xs">{validationSummary.lastScheduledDate || '—'}</p><p>Last task date</p></div>
+                        <div className="col-span-2"><p className="font-semibold text-gray-800 text-xs">{validationSummary.planEndDate}</p><p>Study period ends</p></div>
+                      </div>
+                      {/* Late end warning */}
+                      {validationSummary.lastScheduledDate && validationSummary.planEndDate &&
+                        validationSummary.lastScheduledDate < validationSummary.planEndDate &&
+                        (() => {
+                          const lastD = parseDate(validationSummary.lastScheduledDate);
+                          const endD = parseDate(validationSummary.planEndDate);
+                          const diffDays = Math.round((endD - lastD) / 86400000);
+                          return diffDays > 14 ? (
+                            <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2 text-xs text-yellow-800">
+                              ⚠ The generated plan ends {diffDays} days before your study period ends. Tasks may need to be distributed further across the semester.
+                            </div>
+                          ) : null;
+                        })()
+                      }
+                      {/* Weekly breakdown */}
+                      {validationSummary.weeklyStats.filter(w => w.totalScheduled > 0 || w.missingCourses.length > 0).map((w, i) => (
+                        <div key={i} className="bg-gray-50 border border-gray-100 rounded-lg px-3 py-2 text-xs">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="font-semibold text-gray-700">{w.weekLabel} <span className="font-normal text-gray-400">({w.startStr} – {w.endStr})</span></span>
+                            <span className="text-gray-500">{w.totalScheduled} task{w.totalScheduled !== 1 ? 's' : ''}</span>
+                          </div>
+                          {Object.entries(w.tasksByCourse).length > 0 && (
+                            <div className="flex flex-wrap gap-1 mb-1">
+                              {Object.entries(w.tasksByCourse).map(([course, count]) => (
+                                <span key={course} className="bg-blue-50 text-blue-700 border border-blue-100 rounded px-1.5 py-0.5">{course}: {count}</span>
+                              ))}
+                            </div>
+                          )}
+                          {w.missingCourses.length > 0 && (
+                            <p className="text-amber-600">⚠ No slot for: {w.missingCourses.join(', ')}</p>
+                          )}
+                          {w.overloadedCourses.length > 0 && w.overloadedCourses.map(oc => (
+                            <p key={oc.name} className="text-orange-600">⚠ {oc.name} dominates this week ({oc.pct}% of tasks)</p>
+                          ))}
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
