@@ -8,9 +8,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import PhaseIndicator from '@/components/schedulo/PhaseIndicator';
 import StepHeader from '@/components/schedulo/StepHeader';
 import ContextChat from '@/components/schedulo/ContextChat';
+import { buildBusyMapPublic, getLocalDateStr } from '@/lib/schedulerEngine';
 import { motion } from 'framer-motion';
 
-const HOUR_SLOTS = Array.from({ length: 14 }, (_, i) => i + 7);
+const HOUR_PX = 56;
+const CAL_START_HOUR = 7;
+const CAL_END_HOUR = 21;
 
 export default function ActivePlan() {
   const { planId } = useParams();
@@ -21,21 +24,41 @@ export default function ActivePlan() {
   const [filter, setFilter] = useState('all');
   const [weekOffset, setWeekOffset] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [expandedBusyMap, setExpandedBusyMap] = useState({});
 
   useEffect(() => { loadData(); }, [planId]);
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const p = await base44.entities.StudyPlan.get(planId);
+      const [p, t, courses] = await Promise.all([
+        base44.entities.StudyPlan.get(planId),
+        base44.entities.StudyTask.filter({ plan_id: planId }),
+        base44.entities.Course.filter({ plan_id: planId }),
+      ]);
       setPlan(p);
-      const t = await base44.entities.StudyTask.filter({ plan_id: planId });
       setTasks(t);
+      const { busy } = buildBusyMapPublic(p.calendar_events || [], courses, p.start_date, p.end_date);
+      setExpandedBusyMap(busy);
     } catch (e) {
       navigate('/');
       return;
     }
     setLoading(false);
+  };
+
+  const toTopPx = (timeStr) => {
+    if (!timeStr) return 0;
+    const [h, m] = timeStr.substring(0, 5).split(':').map(Number);
+    return (h - CAL_START_HOUR + m / 60) * HOUR_PX;
+  };
+
+  const toDurationPx = (startStr, endStr) => {
+    if (!startStr || !endStr) return HOUR_PX;
+    const [sh, sm] = startStr.substring(0, 5).split(':').map(Number);
+    const [eh, em] = endStr.substring(0, 5).split(':').map(Number);
+    const mins = (eh * 60 + em) - (sh * 60 + sm);
+    return Math.max(mins / 60 * HOUR_PX, 20);
   };
 
   const toggleTaskStatus = async (taskId, currentStatus) => {
@@ -175,8 +198,9 @@ export default function ActivePlan() {
                 <Button variant="ghost" size="sm" onClick={() => setWeekOffset(w => w + 1)}>Next <ChevronRight className="w-4 h-4" /></Button>
               </div>
               <div className="bg-white rounded-xl border border-blue-100 shadow-sm overflow-hidden mb-6">
-                <div className="grid grid-cols-8 border-b border-gray-100">
-                  <div className="p-2"></div>
+                {/* Day headers */}
+                <div className="grid border-b border-gray-100" style={{ gridTemplateColumns: '48px repeat(7, 1fr)' }}>
+                  <div className="p-2" />
                   {weekDates.map((d, i) => (
                     <div key={i} className={`p-2 text-center border-l border-gray-100 ${d.toDateString() === PLANNING_REFERENCE_DATE.toDateString() ? 'bg-blue-50' : ''}`}>
                       <p className="text-xs text-gray-400">{dayNames[i]}</p>
@@ -184,32 +208,57 @@ export default function ActivePlan() {
                     </div>
                   ))}
                 </div>
-                <div className="max-h-[500px] overflow-y-auto">
-                  {HOUR_SLOTS.map(hour => (
-                    <div key={hour} className="grid grid-cols-8 border-b border-gray-50 min-h-[48px]">
-                      <div className="p-1 text-xs text-gray-400 text-right pr-2 pt-1">{hour}:00</div>
-                      {weekDates.map((d, i) => {
-                        const dateStr = d.toISOString().split('T')[0];
-                        const dayTasks = filteredTasks.filter(t => t.scheduled_date === dateStr && parseInt(t.scheduled_start?.split(':')[0] || '0') === hour);
-                        const dayEvents = (plan?.calendar_events || []).filter(e => {
-                          if (e.recurrence === 'weekly') { return new Date(e.date).getDay() === d.getDay() && parseInt(e.start_time?.split(':')[0] || '0') === hour; }
-                          return e.date === dateStr && parseInt(e.start_time?.split(':')[0] || '0') === hour;
-                        });
-                        return (
-                          <div key={i} className="border-l border-gray-50 p-0.5">
-                            {dayEvents.map((ev, j) => (
-                              <div key={`ev-${j}`} className="text-xs bg-gray-100 rounded px-1 py-0.5 mb-0.5 truncate text-gray-600">{ev.name}</div>
-                            ))}
-                            {dayTasks.map(task => (
-                              <button key={task.id} onClick={() => toggleTaskStatus(task.id, task.status)} className={`w-full text-left text-xs rounded px-1 py-0.5 mb-0.5 truncate border ${task.status === 'completed' ? 'bg-emerald-50 border-emerald-200 text-emerald-600 line-through' : typeColors[task.task_type] || 'bg-gray-100 border-gray-200'}`} title={`${task.title} — click to toggle complete`}>
-                                {task.status === 'completed' ? '✓ ' : ''}{task.title}
-                              </button>
-                            ))}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ))}
+                {/* Time grid */}
+                <div className="max-h-[560px] overflow-y-auto">
+                  <div className="relative grid" style={{ gridTemplateColumns: '48px repeat(7, 1fr)', height: `${(CAL_END_HOUR - CAL_START_HOUR) * HOUR_PX}px` }}>
+                    {/* Hour lines + labels */}
+                    {Array.from({ length: CAL_END_HOUR - CAL_START_HOUR }, (_, i) => CAL_START_HOUR + i).map(hour => (
+                      <React.Fragment key={hour}>
+                        <div className="absolute text-xs text-gray-400 text-right pr-2 leading-none" style={{ top: `${(hour - CAL_START_HOUR) * HOUR_PX}px`, left: 0, width: 44 }}>
+                          {hour}:00
+                        </div>
+                        <div className="absolute border-t border-gray-100 pointer-events-none" style={{ top: `${(hour - CAL_START_HOUR) * HOUR_PX}px`, left: 48, right: 0 }} />
+                      </React.Fragment>
+                    ))}
+                    {/* Day columns */}
+                    {weekDates.map((d, colIdx) => {
+                      const ds = getLocalDateStr(d);
+                      const dayTasks = filteredTasks.filter(t => t.scheduled_date === ds && t.scheduled_start && t.scheduled_end);
+                      const dayEvents = expandedBusyMap[ds] || [];
+                      const colLeft = `calc(48px + ${colIdx} * ((100% - 48px) / 7))`;
+                      const colWidth = 'calc((100% - 48px) / 7)';
+                      return (
+                        <React.Fragment key={colIdx}>
+                          <div className="absolute top-0 bottom-0 border-l border-gray-100 pointer-events-none" style={{ left: colLeft }} />
+                          {/* Calendar events (fixed commitments) */}
+                          {dayEvents.map((ev, j) => (
+                            <div
+                              key={`ev-${j}`}
+                              className="absolute z-10 bg-gray-100 border border-gray-300 rounded text-gray-600 overflow-hidden"
+                              style={{ top: toTopPx(ev.start_time), height: toDurationPx(ev.start_time, ev.end_time), left: colLeft, width: colWidth, padding: '2px 4px' }}
+                              title={ev.name}
+                            >
+                              <p className="text-xs font-medium leading-tight truncate">{ev.name}</p>
+                              <p className="text-xs opacity-70 leading-tight">{ev.start_time}–{ev.end_time}</p>
+                            </div>
+                          ))}
+                          {/* Study tasks */}
+                          {dayTasks.map((task, j) => (
+                            <button
+                              key={`t-${j}`}
+                              onClick={() => toggleTaskStatus(task.id, task.status)}
+                              className={`absolute z-20 rounded border overflow-hidden text-left w-full ${task.status === 'completed' ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : typeColors[task.task_type] || 'bg-gray-100 border-gray-200 text-gray-700'}`}
+                              style={{ top: toTopPx(task.scheduled_start), height: toDurationPx(task.scheduled_start, task.scheduled_end), left: colLeft, width: colWidth, padding: '3px 5px' }}
+                              title={`${task.title} — click to toggle complete`}
+                            >
+                              <p className="text-xs font-semibold leading-tight truncate">{task.status === 'completed' ? '✓ ' : ''}{task.course_name}</p>
+                              <p className="text-xs leading-tight truncate opacity-80">{task.title}</p>
+                            </button>
+                          ))}
+                        </React.Fragment>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             </>
