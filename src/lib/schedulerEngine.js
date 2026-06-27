@@ -137,9 +137,21 @@ function buildBusyMap(calEvents, courses, startDate, endDate) {
     const endMin = evEndTime ? toMinutes(evEndTime) : startMin + 60;
 
     if (isRecurring) {
+      if (!start || !end) continue;
+
+      // Determine day-of-week for recurrence
+      // 1) Try anchor date from stored date field
+      // 2) Fall back to day_of_week name (e.g. "Monday") stored by ICS parser
+      const DAY_NAME_TO_DOW = { Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6 };
+      let targetDow = null;
       const anchorDate = parseDate(evDateStr);
-      if (!anchorDate || !start || !end) continue;
-      const targetDow = anchorDate.getDay();
+      if (anchorDate) {
+        targetDow = anchorDate.getDay();
+      } else if (ev.day_of_week && DAY_NAME_TO_DOW[ev.day_of_week] !== undefined) {
+        targetDow = DAY_NAME_TO_DOW[ev.day_of_week];
+      }
+      if (targetDow === null) continue;
+
       let cur = new Date(start);
       while (cur.getDay() !== targetDow) cur = addDays(cur, 1);
       while (cur <= end) {
