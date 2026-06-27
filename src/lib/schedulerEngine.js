@@ -143,9 +143,12 @@ function buildBusyMap(calEvents, courses, startDate, endDate) {
         targetDow = DAY_NAME_TO_DOW[ev.day_of_week];
       }
       if (targetDow === null) continue;
+      // Respect the event's own end_date if present, otherwise use plan end
+      const evEndDate = ev.end_date ? parseDate(ev.end_date) : null;
+      const recurEnd = evEndDate && evEndDate < end ? evEndDate : end;
       let cur = new Date(start);
       while (cur.getDay() !== targetDow) cur = addDays(cur, 1);
-      while (cur <= end) {
+      while (cur <= recurEnd) {
         addBusy(toDateStr(cur), startMin, endMin, ev, evType, courseId);
         cur = addDays(cur, 7);
       }

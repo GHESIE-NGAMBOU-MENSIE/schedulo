@@ -120,10 +120,22 @@ function parseICS(text, startDate, endDate) {
   const result = [];
   for (const [, ev] of eventMap) {
     const type = guessType(ev.name || '');
-    const isRecurring = !!ev.is_recurring;
+    // Treat as recurring if: RRULE found OR multiple occurrences were detected (end_occurrence != date)
+    const hasMultipleOccurrences = ev.end_occurrence && ev.end_occurrence !== ev.date;
+    const isRecurring = !!ev.is_recurring || hasMultipleOccurrences;
     const evDate = ev.date ? new Date(ev.date) : null;
     // For single non-recurring events, filter by study period
     if (!isRecurring && evDate && (evDate < start || evDate > end)) continue;
+
+    // Determine day_of_week from start_date if not set from RRULE
+    let dayOfWeek = ev.rrule_day || 'Flexible';
+    if (dayOfWeek === 'Flexible' && ev.date) {
+      const d = new Date(ev.date);
+      if (!isNaN(d)) {
+        dayOfWeek = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d.getDay()];
+      }
+    }
+
     result.push({
       name: ev.name || 'Untitled Event',
       description: ev.description || '',
@@ -132,7 +144,7 @@ function parseICS(text, startDate, endDate) {
       end_date: ev.rrule_until || ev.end_occurrence || ev.date || '',
       start_time: ev.start_time || '',
       end_time: ev.end_time || '',
-      day_of_week: ev.rrule_day || 'Flexible',
+      day_of_week: dayOfWeek,
       is_course: isCourse(type),
       is_recurring: isRecurring
     });
