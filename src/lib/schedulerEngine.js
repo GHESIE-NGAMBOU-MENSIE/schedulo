@@ -306,38 +306,67 @@ function assignTargetWeek(task, courseTasks, weeks, courses) {
 
   // Hard deadline constraint
   let latestWeekIdx = weeks.length - 1;
-  if (task.deadline) {
-    const di = getWeekIndex(task.deadline, weeks);
+  const deadlineDate = task.deadline || task.exam_date;
+  if (deadlineDate) {
+    const di = getWeekIndex(deadlineDate, weeks);
     if (di >= 0) latestWeekIdx = di;
-    else if (task.deadline < weeks[0].startStr) latestWeekIdx = 0;
+    else if (deadlineDate < weeks[0].startStr) latestWeekIdx = 0;
   }
 
   // Course exam constraint — schedule before exam week
   let examWeekIdx = weeks.length - 1;
-  if (course?.exam_date) {
-    const ew = getWeekIndex(course.exam_date, weeks);
+  const examDate = task.exam_date || course?.exam_date;
+  if (examDate) {
+    const ew = getWeekIndex(examDate, weeks);
     if (ew >= 0) examWeekIdx = Math.max(0, ew - 1);
   }
   const effectiveLatest = Math.min(latestWeekIdx, examWeekIdx);
 
+  // ── Priority 1: deadline (submission, quiz, test, exam prep) ─────────────
+  if (task.deadline) {
+    const di = getWeekIndex(task.deadline, weeks);
+    if (di >= 0) return Math.min(di, effectiveLatest);
+  }
+
+  // ── Priority 2: target_date (chapter/topic/session date) ─────────────────
+  if (task.target_date) {
+    const ti = getWeekIndex(task.target_date, weeks);
+    if (ti >= 0) return Math.min(ti, effectiveLatest);
+  }
+
+  // ── Priority 3: target_week (week number from document) ──────────────────
+  if (task.target_week != null) {
+    const tw = Math.max(0, task.target_week - 1); // 1-based → 0-based index
+    return Math.min(tw, effectiveLatest);
+  }
+
+  // ── Priority 4: related_course_event_date ────────────────────────────────
+  if (task.related_course_event_date) {
+    const ri = getWeekIndex(task.related_course_event_date, weeks);
+    if (ri >= 0) return Math.min(ri, effectiveLatest);
+  }
+
+  // ── Priority 5: chapter/topic/exercise/assignment number ─────────────────
+  const seqNum = task.chapter_number ?? task.topic_number ?? task.exercise_number ?? task.assignment_number ?? null;
+  if (seqNum != null) {
+    return Math.min(seqNum - 1, effectiveLatest);
+  }
+
+  // ── Priority 6: General fallback by task order ───────────────────────────
   const sortedCourseTasks = [...courseTasks].sort((a, b) => taskInternalOrder(a) - taskInternalOrder(b));
   const posInCourse = sortedCourseTasks.findIndex(t => (t.id && t.id === task.id) || t.title === task.title);
   const totalCourseTasks = sortedCourseTasks.length;
 
-  // Project-like courses: distribute evenly, leave last week as buffer
   if (isProject) {
-    const activeWeeks = Math.max(1, effectiveLatest); // reserve last week as buffer
+    const activeWeeks = Math.max(1, effectiveLatest);
     const fraction = totalCourseTasks <= 1 ? 0 : posInCourse / (totalCourseTasks - 1);
     return Math.min(Math.round(fraction * (activeWeeks - 1)), effectiveLatest);
   }
 
   const type = task.task_type || 'reading';
-
-  // Primary tasks (reading/assignment): one per week sequentially
   const primaryTasks = sortedCourseTasks.filter(t =>
     t.task_type === 'reading' || t.task_type === 'assignment' || t.task_type === 'project_work'
   );
-  // Secondary tasks (exercise/revision): pair with corresponding primary
   const secondaryTasks = sortedCourseTasks.filter(t =>
     t.task_type === 'exercise' || t.task_type === 'revision'
   );
@@ -349,17 +378,11 @@ function assignTargetWeek(task, courseTasks, weeks, courses) {
 
   if (type === 'exercise' || type === 'revision') {
     const posAmongSecondary = secondaryTasks.findIndex(t => (t.id && t.id === task.id) || t.title === task.title);
-    if (posAmongSecondary >= 0) {
-      // Same week as the matching primary task (chapter i → exercise i)
-      return Math.min(posAmongSecondary, effectiveLatest);
-    }
+    if (posAmongSecondary >= 0) return Math.min(posAmongSecondary, effectiveLatest);
   }
 
-  if (type === 'test') {
-    return effectiveLatest;
-  }
+  if (type === 'test') return effectiveLatest;
 
-  // Default: evenly distribute
   const fraction = totalCourseTasks <= 1 ? 0 : posInCourse / (totalCourseTasks - 1);
   return Math.min(Math.round(fraction * effectiveLatest), effectiveLatest);
 }
@@ -604,6 +627,7 @@ export function scheduleTasksEngine(tasks, calEvents, courses, prefs, startDate,
       const courseKey = task.course_id || task.course_name || '__none';
       const durationMinutes = Math.round((task.estimated_hours || 2) * 60);
       const deadlineDate = task.deadline ? parseDate(task.deadline) : null;
+      const notBeforeDate = task.not_before_date ? parseDate(task.not_before_date) : null;
       const preferredEventType = getPreferredEventType(task);
 
       // Split tasks > 3h into blocks
@@ -628,6 +652,7 @@ export function scheduleTasksEngine(tasks, calEvents, courses, prefs, startDate,
             const day = weekStudyDays.find(d => d.dateKey === relEv.dateStr);
             if (!day) continue;
             if (deadlineDate && parseDate(relEv.dateStr) > deadlineDate) continue;
+            if (notBeforeDate && parseDate(relEv.dateStr) < notBeforeDate) continue;
             const preferAfter = relEv.endMin + breakDuration;
             const result = tryPlace(day.dateKey, day.winStart, day.winEnd, day.maxMinutes, day.busyBlocks, getStudyBlocks(day.dateKey), breakDuration, blockDur, preferAfter);
             if (result) {
@@ -643,7 +668,7 @@ export function scheduleTasksEngine(tasks, calEvents, courses, prefs, startDate,
         if (!placed && courseRoutine[courseKey]) {
           const routine = courseRoutine[courseKey];
           const routineDay = weekStudyDays.find(d => d.dow === routine.dow);
-          if (routineDay && (!deadlineDate || parseDate(routineDay.dateKey) <= deadlineDate)) {
+          if (routineDay && (!deadlineDate || parseDate(routineDay.dateKey) <= deadlineDate) && (!notBeforeDate || parseDate(routineDay.dateKey) >= notBeforeDate)) {
             const result = tryPlace(routineDay.dateKey, routineDay.winStart, routineDay.winEnd, routineDay.maxMinutes, routineDay.busyBlocks, getStudyBlocks(routineDay.dateKey), breakDuration, blockDur, routine.startMinutes);
             if (result) {
               placed = result;
@@ -657,6 +682,7 @@ export function scheduleTasksEngine(tasks, calEvents, courses, prefs, startDate,
           for (const day of weekStudyDays) {
             if (lastPlacedDate && day.dateKey < lastPlacedDate) continue;
             if (deadlineDate && parseDate(day.dateKey) > deadlineDate) continue;
+            if (notBeforeDate && parseDate(day.dateKey) < notBeforeDate) continue;
             const result = tryPlace(day.dateKey, day.winStart, day.winEnd, day.maxMinutes, day.busyBlocks, getStudyBlocks(day.dateKey), breakDuration, blockDur, null);
             if (result) {
               placed = result;
@@ -675,6 +701,7 @@ export function scheduleTasksEngine(tasks, calEvents, courses, prefs, startDate,
             const overflowDays = studyDays.filter(d => d.dateKey >= weeks[owi].startStr && d.dateKey <= weeks[owi].endStr);
             for (const day of overflowDays) {
               if (deadlineDate && parseDate(day.dateKey) > deadlineDate) continue;
+              if (notBeforeDate && parseDate(day.dateKey) < notBeforeDate) continue;
               const result = tryPlace(day.dateKey, day.winStart, day.winEnd, day.maxMinutes, day.busyBlocks, getStudyBlocks(day.dateKey), breakDuration, blockDur, null);
               if (result) {
                 placed = result;

@@ -79,6 +79,54 @@
     "confirmed": {
       "type": "boolean",
       "default": false
+    },
+    "target_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "target_week": {
+      "type": "number"
+    },
+    "source_week_label": {
+      "type": "string"
+    },
+    "not_before_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "related_course_event_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "related_course_event_type": {
+      "type": "string"
+    },
+    "exam_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "chapter_number": {
+      "type": "number"
+    },
+    "topic_number": {
+      "type": "number"
+    },
+    "exercise_number": {
+      "type": "number"
+    },
+    "assignment_number": {
+      "type": "number"
+    },
+    "date_confidence": {
+      "type": "string",
+      "enum": [
+        "exact",
+        "estimated",
+        "none"
+      ]
+    },
+    "source_text": {
+      "type": "string"
     }
   },
   "required": [
