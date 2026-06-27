@@ -32,7 +32,16 @@ function fromMinutes(totalMinutes) {
 }
 
 function toDateStr(d) {
-  return d.toISOString().split('T')[0];
+  // Use local date parts to avoid UTC timezone shifting
+  const y = d.getFullYear();
+  const mo = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${mo}-${day}`;
+}
+
+// Export-friendly alias for use in UI components
+export function getLocalDateStr(d) {
+  return toDateStr(d);
 }
 
 function addDays(d, n) {
@@ -85,7 +94,15 @@ function buildBusyMap(calEvents, courses, startDate, endDate) {
 
   const addBusy = (dateKey, startMin, endMin, ev, type, courseId) => {
     if (!busy[dateKey]) busy[dateKey] = [];
-    busy[dateKey].push({ start: startMin, end: endMin, name: ev.name || 'Event', type, courseId });
+    busy[dateKey].push({
+      start: startMin,
+      end: endMin,
+      start_time: fromMinutes(startMin),
+      end_time: fromMinutes(endMin),
+      name: ev.name || 'Event',
+      type,
+      courseId,
+    });
   };
 
   const start = parseDate(startDate);
@@ -94,11 +111,30 @@ function buildBusyMap(calEvents, courses, startDate, endDate) {
   for (const ev of calEvents) {
     const evType = ev.type || classifyEvent(ev);
     const courseId = ev.course_id || matchEventToCourse(ev, courses);
-    const startMin = toMinutes(ev.start_time);
-    const endMin = ev.end_time ? toMinutes(ev.end_time) : startMin + 60;
 
-    const isRecurring = ev.is_recurring || ev.recurrence === 'weekly' || ev.recurrence === 'WEEKLY';
-    const evDateStr = ev.start_date || ev.date;
+    // Normalize recurrence — accept all common formats
+    const rec = (ev.recurrence || ev.recurrence_rule || ev.rrule || '').toString().toUpperCase();
+    const isRecurring =
+      ev.is_recurring === true || ev.is_recurring === 'true' ||
+      rec === 'WEEKLY' || rec.includes('FREQ=WEEKLY');
+
+    // Normalize date field — accept start, startDate, start_datetime, start_date, date
+    const evDateStr = ev.start_date || ev.date ||
+      (ev.start ? ev.start.substring(0, 10) : null) ||
+      (ev.startDate ? ev.startDate.substring(0, 10) : null) ||
+      (ev.start_datetime ? ev.start_datetime.substring(0, 10) : null);
+
+    // Normalize time fields
+    const evStartTime = ev.start_time ||
+      (ev.start && ev.start.includes('T') ? ev.start.substring(11, 16) : null) ||
+      (ev.start_datetime && ev.start_datetime.includes('T') ? ev.start_datetime.substring(11, 16) : null) || '00:00';
+    const evEndTime = ev.end_time ||
+      (ev.end && ev.end.includes('T') ? ev.end.substring(11, 16) : null) ||
+      (ev.end_datetime && ev.end_datetime.includes('T') ? ev.end_datetime.substring(11, 16) : null) ||
+      (ev.endDate && ev.endDate.includes('T') ? ev.endDate.substring(11, 16) : null) || null;
+
+    const startMin = toMinutes(evStartTime);
+    const endMin = evEndTime ? toMinutes(evEndTime) : startMin + 60;
 
     if (isRecurring) {
       const anchorDate = parseDate(evDateStr);
@@ -121,7 +157,9 @@ function buildBusyMap(calEvents, courses, startDate, endDate) {
 }
 
 export function buildBusyMapPublic(calEvents, courses, startDate, endDate) {
-  return buildBusyMap(calEvents, courses, startDate, endDate);
+  const busy = buildBusyMap(calEvents, courses, startDate, endDate);
+  const expandedCount = Object.values(busy).reduce((sum, arr) => sum + arr.length, 0);
+  return { busy, rawCount: (calEvents || []).length, expandedCount };
 }
 
 // ─── Free slot computation ───────────────────────────────────────────────────

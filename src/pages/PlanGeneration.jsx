@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import PhaseIndicator from '@/components/schedulo/PhaseIndicator';
 import StepHeader from '@/components/schedulo/StepHeader';
 import ContextChat from '@/components/schedulo/ContextChat';
-import { scheduleTasksEngine, buildBusyMapPublic, findConflict } from '@/lib/schedulerEngine';
+import { scheduleTasksEngine, buildBusyMapPublic, findConflict, getLocalDateStr } from '@/lib/schedulerEngine';
 import { motion } from 'framer-motion';
 
 function parseDate(str) {
@@ -33,6 +33,7 @@ export default function PlanGeneration() {
   const [showValidation, setShowValidation] = useState(false);
   const [unscheduledTasks, setUnscheduledTasks] = useState([]);
   const [conflicts, setConflicts] = useState([]);
+  const [expandedBusyMap, setExpandedBusyMap] = useState({});
   const [tooltip, setTooltip] = useState(null); // {task, x, y}
 
   useEffect(() => { loadData(); }, [planId]);
@@ -49,11 +50,12 @@ export default function PlanGeneration() {
       setCourses(c);
       if (t.some(task => task.scheduled_date)) {
         setGenerated(true);
-        const builtBusyMap = buildBusyMapPublic(p.calendar_events || [], c, p.start_date, p.end_date);
+        const { busy, rawCount, expandedCount } = buildBusyMapPublic(p.calendar_events || [], c, p.start_date, p.end_date);
+        setExpandedBusyMap(busy);
         const foundConflicts = [];
         for (const task of t) {
           if (!task.scheduled_date) continue;
-          const conflictingEvent = findConflict(task, builtBusyMap);
+          const conflictingEvent = findConflict(task, busy);
           if (conflictingEvent) foundConflicts.push({ task, eventName: conflictingEvent });
         }
         setConflicts(foundConflicts);
@@ -115,12 +117,13 @@ export default function PlanGeneration() {
       setTasks(updatedTasks);
       setUnscheduledTasks(unscheduled);
 
-      // Conflict detection on generated results
-      const builtBusyMap = buildBusyMapPublic(calEvents, allCourses, p.start_date, p.end_date);
+      // Conflict detection on generated results — use expanded busy map
+      const { busy: builtBusy, rawCount, expandedCount } = buildBusyMapPublic(calEvents, allCourses, p.start_date, p.end_date);
+      setExpandedBusyMap(builtBusy);
       const foundConflicts = [];
       for (const t of updatedTasks) {
         if (!t.scheduled_date) continue;
-        const conflictingEvent = findConflict(t, builtBusyMap);
+        const conflictingEvent = findConflict(t, builtBusy);
         if (conflictingEvent) {
           foundConflicts.push({ task: t, eventName: conflictingEvent });
         }
@@ -142,6 +145,8 @@ export default function PlanGeneration() {
         lastScheduledDate: allScheduledDates[allScheduledDates.length - 1] || null,
         planEndDate: p.end_date,
         weeklyStats: weeklyStats || [],
+        rawFixedEvents: rawCount,
+        expandedFixedEvents: expandedCount,
       });
 
       await base44.entities.StudyPlan.update(planId, {
@@ -180,7 +185,7 @@ export default function PlanGeneration() {
     ? scheduledTasks
     : tasks;
 
-  const HOUR_PX = 60; // pixels per hour
+  const HOUR_PX = 60;
   const CAL_START_HOUR = 7;
   const CAL_END_HOUR = 21;
 
@@ -198,30 +203,20 @@ export default function PlanGeneration() {
     return Math.max(mins / 60 * HOUR_PX, 20);
   };
 
+  // Use local date string to avoid UTC timezone shifting
   const getTasksForDay = (date) => {
-    const ds = date.toISOString().split('T')[0];
+    const ds = getLocalDateStr(date);
     return scheduledTasks.filter(t => t.scheduled_date === ds);
   };
 
+  // Read from the expanded busy map — same source as the scheduler
   const getEventsForDay = (date) => {
-    if (!plan?.calendar_events) return [];
-    const ds = date.toISOString().split('T')[0];
-    return (plan.calendar_events || []).filter(ev => {
-      const evDate = ev.start_date || ev.date;
-      if (!evDate) return false;
-      // Recurring: match by day-of-week
-      if (ev.is_recurring || ev.recurrence === 'weekly' || ev.recurrence === 'WEEKLY') {
-        const anchor = new Date(evDate.includes('T') ? evDate : evDate + 'T00:00:00');
-        return !isNaN(anchor) && anchor.getDay() === date.getDay();
-      }
-      // One-time: exact date match (handle both YYYY-MM-DD and ISO strings)
-      return evDate.substring(0, 10) === ds;
-    });
+    const ds = getLocalDateStr(date);
+    return expandedBusyMap[ds] || [];
   };
 
   const weekHasScheduledTasks = weekDates.some(d => {
-    const ds = d.toISOString().split('T')[0];
-    return scheduledTasks.some(t => t.scheduled_date === ds);
+    return scheduledTasks.some(t => t.scheduled_date === getLocalDateStr(d));
   });
 
   const confirmPlan = async () => {
@@ -342,8 +337,22 @@ export default function PlanGeneration() {
                         <div><p className="font-semibold text-gray-800">{validationSummary.totalFreeHours}h</p><p>Total free time</p></div>
                         <div><p className="font-semibold text-gray-800 text-xs">{validationSummary.firstScheduledDate || '—'}</p><p>First task date</p></div>
                         <div><p className="font-semibold text-gray-800 text-xs">{validationSummary.lastScheduledDate || '—'}</p><p>Last task date</p></div>
-                        <div className="col-span-2"><p className="font-semibold text-gray-800 text-xs">{validationSummary.planEndDate}</p><p>Study period ends</p></div>
+                        <div><p className="font-semibold text-gray-800 text-xs">{validationSummary.planEndDate}</p><p>Study period ends</p></div>
+                        <div>
+                          <p className="font-semibold text-gray-800">{validationSummary.rawFixedEvents ?? 0} → {validationSummary.expandedFixedEvents ?? 0}</p>
+                          <p>Fixed events (raw → expanded)</p>
+                        </div>
+                        <div>
+                          <p className="font-semibold text-gray-800">{weekDates.reduce((sum, d) => sum + (expandedBusyMap[getLocalDateStr(d)] || []).length, 0)}</p>
+                          <p>Fixed events this week</p>
+                        </div>
                       </div>
+                      {/* Fixed event expansion warning */}
+                      {(validationSummary.rawFixedEvents ?? 0) > 0 && (validationSummary.expandedFixedEvents ?? 0) === 0 && (
+                        <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-800">
+                          ⚠ Fixed calendar events could not be expanded. Please check recurrence and date fields.
+                        </div>
+                      )}
                       {/* Late end warning */}
                       {validationSummary.lastScheduledDate && validationSummary.planEndDate &&
                         validationSummary.lastScheduledDate < validationSummary.planEndDate &&
