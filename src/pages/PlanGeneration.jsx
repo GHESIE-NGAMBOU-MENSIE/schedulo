@@ -175,11 +175,14 @@ export default function PlanGeneration() {
     const ds = date.toISOString().split('T')[0];
     return (plan.calendar_events || []).filter(ev => {
       const evDate = ev.start_date || ev.date;
-      if (ev.is_recurring || ev.recurrence === 'weekly') {
-        const anchor = new Date((evDate || '') + 'T00:00:00');
+      if (!evDate) return false;
+      // Recurring: match by day-of-week
+      if (ev.is_recurring || ev.recurrence === 'weekly' || ev.recurrence === 'WEEKLY') {
+        const anchor = new Date(evDate.includes('T') ? evDate : evDate + 'T00:00:00');
         return !isNaN(anchor) && anchor.getDay() === date.getDay();
       }
-      return evDate === ds;
+      // One-time: exact date match (handle both YYYY-MM-DD and ISO strings)
+      return evDate.substring(0, 10) === ds;
     });
   };
 
@@ -196,13 +199,29 @@ export default function PlanGeneration() {
     navigate(`/plan/${planId}/active`);
   };
 
-  const typeColors = {
-    reading: 'bg-blue-100 border-blue-300 text-blue-800',
-    assignment: 'bg-purple-100 border-purple-300 text-purple-800',
-    exercise: 'bg-green-100 border-green-300 text-green-800',
-    revision: 'bg-amber-100 border-amber-300 text-amber-800',
-    test: 'bg-red-100 border-red-300 text-red-800',
-    project_work: 'bg-indigo-100 border-indigo-300 text-indigo-800',
+  // Per-course color palette (Tailwind literal classes)
+  const COURSE_COLOR_PALETTE = [
+    { bg: 'bg-blue-100', border: 'border-blue-400', text: 'text-blue-900' },
+    { bg: 'bg-violet-100', border: 'border-violet-400', text: 'text-violet-900' },
+    { bg: 'bg-emerald-100', border: 'border-emerald-400', text: 'text-emerald-900' },
+    { bg: 'bg-amber-100', border: 'border-amber-400', text: 'text-amber-900' },
+    { bg: 'bg-rose-100', border: 'border-rose-400', text: 'text-rose-900' },
+    { bg: 'bg-cyan-100', border: 'border-cyan-400', text: 'text-cyan-900' },
+    { bg: 'bg-orange-100', border: 'border-orange-400', text: 'text-orange-900' },
+    { bg: 'bg-pink-100', border: 'border-pink-400', text: 'text-pink-900' },
+    { bg: 'bg-teal-100', border: 'border-teal-400', text: 'text-teal-900' },
+    { bg: 'bg-indigo-100', border: 'border-indigo-400', text: 'text-indigo-900' },
+  ];
+
+  const courseColorMap = courses.reduce((acc, c, i) => {
+    acc[c.id] = COURSE_COLOR_PALETTE[i % COURSE_COLOR_PALETTE.length];
+    // also index by name for tasks that only have course_name
+    acc[c.name] = COURSE_COLOR_PALETTE[i % COURSE_COLOR_PALETTE.length];
+    return acc;
+  }, {});
+
+  const getTaskColor = (task) => {
+    return courseColorMap[task.course_id] || courseColorMap[task.course_name] || COURSE_COLOR_PALETTE[0];
   };
 
   return (
@@ -395,21 +414,16 @@ export default function PlanGeneration() {
                               {dayTasks.map((task, j) => {
                                 const top = toTopPx(task.scheduled_start);
                                 const height = toDurationPx(task.scheduled_start, task.scheduled_end);
-                                const colorClass = typeColors[task.task_type] || 'bg-gray-100 border-gray-200 text-gray-700';
+                                const color = getTaskColor(task);
                                 return (
                                   <div
                                     key={`t-${j}`}
-                                    className={`absolute z-20 rounded border overflow-hidden ${colorClass}`}
+                                    className={`absolute z-20 rounded border overflow-hidden ${color.bg} ${color.border} ${color.text}`}
                                     style={{ top, height, left: colLeft, width: colWidth, padding: '3px 5px' }}
                                     title={`${task.title} · ${task.course_name} · ${task.scheduled_start}–${task.scheduled_end}`}
                                   >
-                                    <p className="text-xs font-semibold leading-tight truncate">{task.title}</p>
-                                    {height > 32 && (
-                                      <p className="text-xs opacity-75 leading-tight truncate">{task.course_name}</p>
-                                    )}
-                                    {height > 48 && (
-                                      <p className="text-xs opacity-60 leading-tight">{task.scheduled_start}–{task.scheduled_end}</p>
-                                    )}
+                                    <p className="text-xs font-semibold leading-tight truncate">{task.course_name}</p>
+                                    <p className="text-xs leading-tight truncate opacity-80">{task.title}</p>
                                   </div>
                                 );
                               })}
@@ -434,7 +448,7 @@ export default function PlanGeneration() {
                             <span className="font-semibold text-gray-900 block truncate">{task.title}</span>
                             <span className="text-xs text-gray-400">{task.course_name}</span>
                           </div>
-                          <span className={`flex-shrink-0 px-2 py-0.5 rounded-full text-xs font-medium border ${typeColors[task.task_type] || 'bg-gray-100 border-gray-200 text-gray-600'}`}>
+                          <span className={`flex-shrink-0 px-2 py-0.5 rounded-full text-xs font-medium border ${getTaskColor(task).bg} ${getTaskColor(task).border} ${getTaskColor(task).text}`}>
                             {task.task_type?.replace('_', ' ')}
                           </span>
                         </div>

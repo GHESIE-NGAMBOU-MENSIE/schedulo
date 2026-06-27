@@ -226,6 +226,10 @@ function getPreferredEventType(task) {
 /**
  * Main scheduling function.
  * Returns { scheduled: [{task, dateStr, startTime, endTime, explanation}], unscheduled: [{task, reason}] }
+ *
+ * Distribution strategy: tasks are spread evenly across the full study period.
+ * Each task gets a "target window" proportional to its position in the sorted list,
+ * so tasks don't all pile up at the start.
  */
 export function scheduleTasksEngine(tasks, calEvents, courses, prefs, startDate, endDate) {
   const busyMap = buildBusyMap(calEvents, courses, startDate, endDate);
@@ -237,13 +241,13 @@ export function scheduleTasksEngine(tasks, calEvents, courses, prefs, startDate,
   const scheduled = [];
   const unscheduled = [];
 
-  // Sort tasks: by deadline ASC, then by dependency order, then by suggested phase
-  const sortedTasks = [...tasks].sort((a, b) => {
-    const deadlineA = a.deadline || endDate;
-    const deadlineB = b.deadline || endDate;
-    if (deadlineA !== deadlineB) return deadlineA.localeCompare(deadlineB);
+  // Sort tasks: hard-deadline tasks first (sorted by deadline), then no-deadline tasks
+  const tasksWithDeadline = tasks.filter(t => t.deadline).sort((a, b) => {
+    if (a.deadline !== b.deadline) return a.deadline.localeCompare(b.deadline);
     return taskOrder(a) - taskOrder(b);
   });
+  const tasksWithoutDeadline = tasks.filter(t => !t.deadline).sort((a, b) => taskOrder(a) - taskOrder(b));
+  const sortedTasks = [...tasksWithDeadline, ...tasksWithoutDeadline];
 
   // Build course -> related events map from busy map
   const courseEventsByDate = {}; // courseId -> [{dateStr, type, endMin}]
@@ -256,10 +260,28 @@ export function scheduleTasksEngine(tasks, calEvents, courses, prefs, startDate,
     }
   }
 
+  // For no-deadline tasks: compute a target start slot index to spread them evenly
+  const noDeadlineCount = tasksWithoutDeadline.length;
+  const slotCount = allSlots.length;
+
+  // Track slot index cursor per task group to enforce spreading
+  // Each no-deadline task gets an "earliest allowed slot" index
+  const getEarliestSlotIdx = (taskIdxInNoDeadlineGroup) => {
+    if (noDeadlineCount <= 1 || slotCount <= 1) return 0;
+    return Math.floor((taskIdxInNoDeadlineGroup / noDeadlineCount) * slotCount);
+  };
+
+  let noDeadlineTaskIdx = 0;
+
   for (const task of sortedTasks) {
+    const hasDeadline = !!task.deadline;
     const durationMinutes = Math.round((task.estimated_hours || 2) * 60);
     const deadline = task.deadline ? parseDate(task.deadline) : null;
     const preferredEventType = getPreferredEventType(task);
+
+    // For no-deadline tasks, compute the earliest slot index to start searching from
+    const earliestSlotIdx = hasDeadline ? 0 : getEarliestSlotIdx(noDeadlineTaskIdx);
+    if (!hasDeadline) noDeadlineTaskIdx++;
 
     // Max 3h per block; split if > 3h
     const blocks = [];
@@ -269,7 +291,6 @@ export function scheduleTasksEngine(tasks, calEvents, courses, prefs, startDate,
       remaining -= 180;
     }
 
-    let allBlocksScheduled = true;
     let lastScheduledDate = null;
 
     for (let blockIdx = 0; blockIdx < blocks.length; blockIdx++) {
@@ -281,10 +302,7 @@ export function scheduleTasksEngine(tasks, calEvents, courses, prefs, startDate,
       if (task.course_id && preferredEventType) {
         const relatedEvents = (courseEventsByDate[task.course_id] || [])
           .filter(e => Array.isArray(preferredEventType) ? preferredEventType.includes(e.type) : e.type === preferredEventType)
-          .filter(e => {
-            if (deadline) return e.dateStr <= task.deadline;
-            return true;
-          })
+          .filter(e => !deadline || e.dateStr <= task.deadline)
           .sort((a, b) => a.dateStr.localeCompare(b.dateStr));
 
         for (const relEv of relatedEvents) {
@@ -312,9 +330,10 @@ export function scheduleTasksEngine(tasks, calEvents, courses, prefs, startDate,
         }
       }
 
-      // Step 2: No related event found — use first available slot respecting deadline
+      // Step 2: No related event — use available slot, respecting spread window and deadline
       if (!placed) {
-        const candidateSlots = allSlots.filter(s => {
+        const candidateSlots = allSlots.filter((s, idx) => {
+          if (idx < earliestSlotIdx) return false;
           if (lastScheduledDate && s.dateStr < lastScheduledDate) return false;
           if (deadline && parseDate(s.dateStr) > deadline) return false;
           return true;
@@ -332,7 +351,24 @@ export function scheduleTasksEngine(tasks, calEvents, courses, prefs, startDate,
         }
       }
 
-      // Step 3: Last resort — ignore deadline constraint
+      // Step 3: Spread window had nothing — try any slot before deadline
+      if (!placed) {
+        const fallbackSlots = allSlots.filter(s => {
+          if (lastScheduledDate && s.dateStr < lastScheduledDate) return false;
+          if (deadline && parseDate(s.dateStr) > deadline) return false;
+          return true;
+        });
+        for (const slot of fallbackSlots) {
+          const result = tryPlaceInSlot(slot, blockDuration, usedMinutesPerDay, scheduledBlocksPerDay, null);
+          if (result) {
+            placed = result;
+            explanation = 'Scheduled in next available slot';
+            break;
+          }
+        }
+      }
+
+      // Step 4: Last resort — ignore deadline constraint
       if (!placed) {
         for (const slot of allSlots.filter(s => !deadline || parseDate(s.dateStr) > deadline)) {
           const result = tryPlaceInSlot(slot, blockDuration, usedMinutesPerDay, scheduledBlocksPerDay, null);
@@ -345,7 +381,6 @@ export function scheduleTasksEngine(tasks, calEvents, courses, prefs, startDate,
       }
 
       if (placed) {
-        // Mark slot as used
         usedMinutesPerDay[placed.dateStr] = (usedMinutesPerDay[placed.dateStr] || 0) + (placed.end - placed.start);
         if (!scheduledBlocksPerDay[placed.dateStr]) scheduledBlocksPerDay[placed.dateStr] = [];
         scheduledBlocksPerDay[placed.dateStr].push({ start: placed.start, end: placed.end });
@@ -359,7 +394,6 @@ export function scheduleTasksEngine(tasks, calEvents, courses, prefs, startDate,
           explanation: blocks.length > 1 ? `${explanation} (block ${blockIdx + 1}/${blocks.length})` : explanation
         });
       } else {
-        allBlocksScheduled = false;
         if (blockIdx === 0) {
           let reason = 'No free slot available in study period';
           if (!allSlots.length) reason = 'No study days configured';
