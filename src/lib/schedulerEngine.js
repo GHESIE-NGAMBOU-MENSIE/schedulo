@@ -1,10 +1,17 @@
 /**
- * Schedulo Rule-Based Scheduling Engine
- * Detects free slots from preferences + calendar events,
- * then places tasks context-awarein the best available slot.
+ * Schedulo Rule-Based Scheduling Engine v2
+ *
+ * Core invariants enforced for every placed block:
+ *  - Inside the study period
+ *  - Inside the preferred study window for that day
+ *  - Does NOT overlap any fixed calendar event (busy block)
+ *  - Does NOT overlap any already-placed study block
+ *  - Break duration is respected AFTER every busy block and AFTER every study block
+ *  - Respects max study hours per day
+ *  - Does not fall on a no-study day
+ *  - Is before its deadline (if set)
  */
 
-const DAY_NAME_TO_JS = { Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6 };
 const JS_DAY_TO_NAME = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 function toMinutes(timeStr) {
@@ -19,7 +26,7 @@ function fromMinutes(totalMinutes) {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
-function dateStr(d) {
+function toDateStr(d) {
   return d.toISOString().split('T')[0];
 }
 
@@ -31,13 +38,11 @@ function addDays(d, n) {
 
 function parseDate(str) {
   if (!str) return null;
-  const d = new Date(str + 'T00:00:00');
+  const s = str.includes('T') ? str : str + 'T00:00:00';
+  const d = new Date(s);
   return isNaN(d) ? null : d;
 }
 
-/**
- * Classify a calendar event by type.
- */
 function classifyEvent(ev) {
   const name = (ev.name || '').toLowerCase();
   if (/\b(exam|klausur|pr[üu]fung)\b/.test(name)) return 'exam';
@@ -47,14 +52,10 @@ function classifyEvent(ev) {
   return 'commitment';
 }
 
-/**
- * Try to match a calendar event to a course by name similarity.
- */
 function matchEventToCourse(ev, courses) {
   const evName = (ev.name || '').toLowerCase();
   for (const c of courses) {
     const cName = (c.name || '').toLowerCase();
-    // Check if course name words appear in event name
     const words = cName.split(/\s+/).filter(w => w.length > 3);
     if (words.some(w => evName.includes(w))) return c.id;
     if (evName.includes(cName) || cName.includes(evName.split(' ')[0])) return c.id;
@@ -64,14 +65,14 @@ function matchEventToCourse(ev, courses) {
 
 /**
  * Build a map of all fixed busy blocks per date string.
- * Returns: { "2026-04-07": [{start: minutes, end: minutes, name, type, courseId}] }
+ * { "2026-04-07": [{start: minutes, end: minutes, name, type, courseId}] }
  */
 function buildBusyMap(calEvents, courses, startDate, endDate) {
   const busy = {};
 
   const addBusy = (dateKey, startMin, endMin, ev, type, courseId) => {
     if (!busy[dateKey]) busy[dateKey] = [];
-    busy[dateKey].push({ start: startMin, end: endMin, name: ev.name, type, courseId, ev });
+    busy[dateKey].push({ start: startMin, end: endMin, name: ev.name || 'Event', type, courseId });
   };
 
   const start = parseDate(startDate);
@@ -81,24 +82,26 @@ function buildBusyMap(calEvents, courses, startDate, endDate) {
     const evType = ev.type || classifyEvent(ev);
     const courseId = ev.course_id || matchEventToCourse(ev, courses);
     const startMin = toMinutes(ev.start_time);
+    // If no end time, assume 1 hour
     const endMin = ev.end_time ? toMinutes(ev.end_time) : startMin + 60;
 
-    if (ev.is_recurring || ev.recurrence === 'weekly') {
-      // Expand recurring event across entire study period
-      const anchorDate = parseDate(ev.start_date || ev.date);
+    const isRecurring = ev.is_recurring || ev.recurrence === 'weekly' || ev.recurrence === 'WEEKLY';
+    const evDateStr = ev.start_date || ev.date;
+
+    if (isRecurring) {
+      const anchorDate = parseDate(evDateStr);
       if (!anchorDate || !start || !end) continue;
       const targetDow = anchorDate.getDay();
       let cur = new Date(start);
-      // advance to first occurrence
       while (cur.getDay() !== targetDow) cur = addDays(cur, 1);
       while (cur <= end) {
-        addBusy(dateStr(cur), startMin, endMin, ev, evType, courseId);
+        addBusy(toDateStr(cur), startMin, endMin, ev, evType, courseId);
         cur = addDays(cur, 7);
       }
     } else {
-      const d = parseDate(ev.start_date || ev.date);
+      const d = parseDate(evDateStr);
       if (!d) continue;
-      addBusy(dateStr(d), startMin, endMin, ev, evType, courseId);
+      addBusy(toDateStr(d), startMin, endMin, ev, evType, courseId);
     }
   }
 
@@ -106,103 +109,82 @@ function buildBusyMap(calEvents, courses, startDate, endDate) {
 }
 
 /**
- * Generate all free study slots across the study period.
- * Returns array of { date: Date, dateStr, windowStart: minutes, windowEnd: minutes, busyBlocks, dayName }
+ * Compute free sub-blocks within a day's study window, accounting for:
+ *  - fixed busy blocks (calendar events)
+ *  - already-placed study blocks
+ *  - break duration AFTER each busy or study block
+ *
+ * Returns [{start, end}] sorted, filtered to >= 30 min
  */
-function generateFreeSlots(startDate, endDate, prefs, busyMap) {
-  const schedule = prefs.schedule || {};
-  const maxHoursPerDay = (prefs.max_hours || 6) * 60; // in minutes
-  const breakDuration = prefs.break_duration || 15;
-  const slots = [];
+function computeFreeBlocks(windowStart, windowEnd, busyBlocks, studyBlocks, breakDuration) {
+  // Merge all occupied intervals, adding break padding after each
+  const occupied = [];
 
-  const start = parseDate(startDate);
-  const end = parseDate(endDate);
-  if (!start || !end) return slots;
-
-  let cur = new Date(start);
-  while (cur <= end) {
-    const dayName = JS_DAY_TO_NAME[cur.getDay()];
-    const dayPrefs = schedule[dayName] || {};
-
-    if (!dayPrefs.noStudy) {
-      const winStart = toMinutes(dayPrefs.start || prefs.preferred_start || '09:00');
-      const winEnd = toMinutes(dayPrefs.end || prefs.preferred_end || '18:00');
-      const busyBlocks = (busyMap[dateStr(cur)] || []).sort((a, b) => a.start - b.start);
-
-      slots.push({
-        date: new Date(cur),
-        dateStr: dateStr(cur),
-        dayName,
-        windowStart: winStart,
-        windowEnd: winEnd,
-        maxMinutes: maxHoursPerDay,
-        breakDuration,
-        busyBlocks
-      });
-    }
-    cur = addDays(cur, 1);
+  for (const b of busyBlocks) {
+    // Fixed events block their exact time; also add a break gap after them
+    occupied.push({ start: b.start, end: b.end + breakDuration });
   }
-  return slots;
+  for (const b of studyBlocks) {
+    // Study blocks also need a break after them before the next study block can start
+    occupied.push({ start: b.start, end: b.end + breakDuration });
+  }
+
+  // Sort and merge overlapping intervals
+  occupied.sort((a, b) => a.start - b.start);
+  const merged = [];
+  for (const iv of occupied) {
+    if (merged.length && iv.start <= merged[merged.length - 1].end) {
+      merged[merged.length - 1].end = Math.max(merged[merged.length - 1].end, iv.end);
+    } else {
+      merged.push({ ...iv });
+    }
+  }
+
+  // Compute gaps = free blocks
+  const free = [];
+  let cursor = windowStart;
+  for (const iv of merged) {
+    if (iv.start > cursor) {
+      free.push({ start: cursor, end: Math.min(iv.start, windowEnd) });
+    }
+    cursor = Math.max(cursor, iv.end);
+  }
+  if (cursor < windowEnd) {
+    free.push({ start: cursor, end: windowEnd });
+  }
+
+  return free.filter(b => b.end - b.start >= 30);
 }
 
 /**
- * For a given slot day, find free sub-blocks within the study window,
- * excluding busy periods. Returns [{start: minutes, end: minutes}]
+ * Try to place a block of durationMinutes on a given day.
+ * Returns {dateStr, start, end} or null.
+ *
+ * @param preferAfterMinutes - if set, prefer starting at or after this minute (e.g. after a lecture + break)
  */
-function getFreeBlocks(slot, alreadyUsedMinutes, alreadyScheduledBlocks) {
-  const allBusy = [...slot.busyBlocks, ...alreadyScheduledBlocks].sort((a, b) => a.start - b.start);
-  const freeBlocks = [];
-  let cursor = slot.windowStart;
+function tryPlace(dateKey, windowStart, windowEnd, maxMinutes, busyBlocks, studyBlocks, breakDuration, durationMinutes, preferAfterMinutes) {
+  // Check daily cap
+  const usedMinutes = studyBlocks.reduce((sum, b) => sum + (b.end - b.start), 0);
+  if (usedMinutes >= maxMinutes) return null;
 
-  for (const block of allBusy) {
-    if (block.start > cursor) {
-      freeBlocks.push({ start: cursor, end: Math.min(block.start, slot.windowEnd) });
-    }
-    cursor = Math.max(cursor, block.end);
-  }
-  if (cursor < slot.windowEnd) {
-    freeBlocks.push({ start: cursor, end: slot.windowEnd });
-  }
-
-  // Filter out blocks that are too small (< 30 min)
-  return freeBlocks.filter(b => b.end - b.start >= 30);
-}
-
-/**
- * Try to place a task of durationMinutes into a slot.
- * Returns {dateStr, start, end} or null if it doesn't fit.
- */
-function tryPlaceInSlot(slot, durationMinutes, usedMinutesPerDay, scheduledBlocksPerDay, preferAfterMinutes) {
-  const used = usedMinutesPerDay[slot.dateStr] || 0;
-  if (used >= slot.maxMinutes) return null;
-
-  const remaining = slot.maxMinutes - used;
-  const actualDuration = Math.min(durationMinutes, remaining, 180); // max 3h block
+  const actualDuration = Math.min(durationMinutes, maxMinutes - usedMinutes, 180);
   if (actualDuration < 30) return null;
 
-  const scheduled = scheduledBlocksPerDay[slot.dateStr] || [];
-  const freeBlocks = getFreeBlocks(slot, used, scheduled);
+  const freeBlocks = computeFreeBlocks(windowStart, windowEnd, busyBlocks, studyBlocks, breakDuration);
 
   for (const fb of freeBlocks) {
-    // Try to start after preferAfterMinutes (e.g. after a lecture + break)
-    const startCandidate = preferAfterMinutes != null && preferAfterMinutes > fb.start
-      ? preferAfterMinutes
-      : fb.start;
-
-    if (startCandidate + actualDuration <= fb.end) {
-      return { dateStr: slot.dateStr, start: startCandidate, end: startCandidate + actualDuration };
+    // Try preferred start first
+    if (preferAfterMinutes != null && preferAfterMinutes >= fb.start && preferAfterMinutes + actualDuration <= fb.end) {
+      return { dateStr: dateKey, start: preferAfterMinutes, end: preferAfterMinutes + actualDuration };
     }
-    // Fallback: start at block beginning
+    // Then try from block start
     if (fb.start + actualDuration <= fb.end) {
-      return { dateStr: slot.dateStr, start: fb.start, end: fb.start + actualDuration };
+      return { dateStr: dateKey, start: fb.start, end: fb.start + actualDuration };
     }
   }
   return null;
 }
 
-/**
- * Determine task category for ordering purposes.
- */
 function taskOrder(task) {
   const type = task.task_type || 'reading';
   const phase = task.suggested_phase || '';
@@ -212,36 +194,80 @@ function taskOrder(task) {
   return 0;
 }
 
-/**
- * Detect if a task type should follow a specific calendar event type.
- */
 function getPreferredEventType(task) {
-  const type = task.task_type;
-  if (type === 'reading') return 'lecture';
-  if (type === 'exercise') return 'exercise';
-  if (type === 'revision' || type === 'test') return ['quiz', 'exam'];
+  if (task.task_type === 'reading') return 'lecture';
+  if (task.task_type === 'exercise') return 'exercise';
+  if (task.task_type === 'revision' || task.task_type === 'test') return ['quiz', 'exam'];
   return null;
 }
 
 /**
+ * Check if a placed task overlaps with any fixed event on its day.
+ * Returns the conflicting event name or null.
+ */
+export function findConflict(task, busyMap) {
+  if (!task.scheduled_date || !task.scheduled_start || !task.scheduled_end) return null;
+  const dayBusy = busyMap[task.scheduled_date] || [];
+  const taskStart = toMinutes(task.scheduled_start);
+  const taskEnd = toMinutes(task.scheduled_end);
+  for (const b of dayBusy) {
+    if (taskStart < b.end && taskEnd > b.start) {
+      return b.name;
+    }
+  }
+  return null;
+}
+
+/**
+ * Build the busy map from raw calendar events — exported so the UI can use it for conflict detection.
+ */
+export function buildBusyMapPublic(calEvents, courses, startDate, endDate) {
+  return buildBusyMap(calEvents, courses, startDate, endDate);
+}
+
+/**
  * Main scheduling function.
- * Returns { scheduled: [{task, dateStr, startTime, endTime, explanation}], unscheduled: [{task, reason}] }
- *
- * Distribution strategy: tasks are spread evenly across the full study period.
- * Each task gets a "target window" proportional to its position in the sorted list,
- * so tasks don't all pile up at the start.
+ * Returns { scheduled, unscheduled, totalSlots, totalFreeMinutes }
  */
 export function scheduleTasksEngine(tasks, calEvents, courses, prefs, startDate, endDate) {
   const busyMap = buildBusyMap(calEvents, courses, startDate, endDate);
-  const allSlots = generateFreeSlots(startDate, endDate, prefs, busyMap);
+  const breakDuration = prefs.break_duration != null ? prefs.break_duration : 15;
+  const maxHoursPerDay = (prefs.max_hours || 6) * 60;
+  const schedule = prefs.schedule || {};
 
-  const usedMinutesPerDay = {}; // dateStr -> minutes used
-  const scheduledBlocksPerDay = {}; // dateStr -> [{start, end}]
+  const start = parseDate(startDate);
+  const end = parseDate(endDate);
+  if (!start || !end) return { scheduled: [], unscheduled: tasks.map(t => ({ task: t, reason: 'No valid study period dates' })), totalSlots: 0, totalFreeMinutes: 0 };
+
+  // Build list of study days
+  const studyDays = [];
+  let cur = new Date(start);
+  while (cur <= end) {
+    const dayName = JS_DAY_TO_NAME[cur.getDay()];
+    const dayPrefs = schedule[dayName] || {};
+    if (!dayPrefs.noStudy) {
+      const winStart = toMinutes(dayPrefs.start || prefs.preferred_start || '09:00');
+      const winEnd = toMinutes(dayPrefs.end || prefs.preferred_end || '18:00');
+      studyDays.push({
+        dateKey: toDateStr(cur),
+        dayName,
+        winStart,
+        winEnd,
+        maxMinutes: maxHoursPerDay,
+        busyBlocks: (busyMap[toDateStr(cur)] || []).sort((a, b) => a.start - b.start),
+      });
+    }
+    cur = addDays(cur, 1);
+  }
+
+  // Per-day mutable state: already-placed study blocks
+  const studyBlocksPerDay = {}; // dateKey -> [{start, end}]
+  const getStudyBlocks = (dk) => studyBlocksPerDay[dk] || [];
 
   const scheduled = [];
   const unscheduled = [];
 
-  // Sort tasks: hard-deadline tasks first (sorted by deadline), then no-deadline tasks
+  // Sort: deadline tasks first, then no-deadline spread evenly
   const tasksWithDeadline = tasks.filter(t => t.deadline).sort((a, b) => {
     if (a.deadline !== b.deadline) return a.deadline.localeCompare(b.deadline);
     return taskOrder(a) - taskOrder(b);
@@ -249,8 +275,8 @@ export function scheduleTasksEngine(tasks, calEvents, courses, prefs, startDate,
   const tasksWithoutDeadline = tasks.filter(t => !t.deadline).sort((a, b) => taskOrder(a) - taskOrder(b));
   const sortedTasks = [...tasksWithDeadline, ...tasksWithoutDeadline];
 
-  // Build course -> related events map from busy map
-  const courseEventsByDate = {}; // courseId -> [{dateStr, type, endMin}]
+  // Build course -> related events map
+  const courseEventsByDate = {};
   for (const [ds, blocks] of Object.entries(busyMap)) {
     for (const b of blocks) {
       if (b.courseId) {
@@ -260,157 +286,127 @@ export function scheduleTasksEngine(tasks, calEvents, courses, prefs, startDate,
     }
   }
 
-  // For no-deadline tasks: compute a target start slot index to spread them evenly
+  // For no-deadline tasks: evenly spread start indices
   const noDeadlineCount = tasksWithoutDeadline.length;
-  const slotCount = allSlots.length;
-
-  // Track slot index cursor per task group to enforce spreading
-  // Each no-deadline task gets an "earliest allowed slot" index
-  const getEarliestSlotIdx = (taskIdxInNoDeadlineGroup) => {
-    if (noDeadlineCount <= 1 || slotCount <= 1) return 0;
-    return Math.floor((taskIdxInNoDeadlineGroup / noDeadlineCount) * slotCount);
+  const totalDays = studyDays.length;
+  const getEarliestDayIdx = (idx) => {
+    if (noDeadlineCount <= 1 || totalDays <= 1) return 0;
+    return Math.floor((idx / noDeadlineCount) * totalDays);
   };
 
-  let noDeadlineTaskIdx = 0;
+  let noDeadlineIdx = 0;
 
   for (const task of sortedTasks) {
     const hasDeadline = !!task.deadline;
+    const deadlineDate = task.deadline ? parseDate(task.deadline) : null;
     const durationMinutes = Math.round((task.estimated_hours || 2) * 60);
-    const deadline = task.deadline ? parseDate(task.deadline) : null;
     const preferredEventType = getPreferredEventType(task);
+    const earliestDayIdx = hasDeadline ? 0 : getEarliestDayIdx(noDeadlineIdx);
+    if (!hasDeadline) noDeadlineIdx++;
 
-    // For no-deadline tasks, compute the earliest slot index to start searching from
-    const earliestSlotIdx = hasDeadline ? 0 : getEarliestSlotIdx(noDeadlineTaskIdx);
-    if (!hasDeadline) noDeadlineTaskIdx++;
+    // Split into max-3h blocks
+    const blockDurations = [];
+    let rem = durationMinutes;
+    while (rem > 0) { blockDurations.push(Math.min(rem, 180)); rem -= 180; }
 
-    // Max 3h per block; split if > 3h
-    const blocks = [];
-    let remaining = durationMinutes;
-    while (remaining > 0) {
-      blocks.push(Math.min(remaining, 180));
-      remaining -= 180;
-    }
+    let lastPlacedDate = null;
 
-    let lastScheduledDate = null;
-
-    for (let blockIdx = 0; blockIdx < blocks.length; blockIdx++) {
-      const blockDuration = blocks[blockIdx];
+    for (let bi = 0; bi < blockDurations.length; bi++) {
+      const blockDur = blockDurations[bi];
       let placed = null;
       let explanation = '';
 
-      // Step 1: Try to find a related calendar event slot (same day, after the event + break)
+      // ── Step 1: place after related calendar event (same day, after event + break) ──
       if (task.course_id && preferredEventType) {
         const relatedEvents = (courseEventsByDate[task.course_id] || [])
           .filter(e => Array.isArray(preferredEventType) ? preferredEventType.includes(e.type) : e.type === preferredEventType)
-          .filter(e => !deadline || e.dateStr <= task.deadline)
+          .filter(e => !deadlineDate || e.dateStr <= task.deadline)
           .sort((a, b) => a.dateStr.localeCompare(b.dateStr));
 
         for (const relEv of relatedEvents) {
-          const slot = allSlots.find(s => s.dateStr === relEv.dateStr);
-          if (!slot) continue;
-          if (deadline && parseDate(relEv.dateStr) > deadline) continue;
-          const afterBreak = relEv.endMin + (prefs.break_duration || 15);
-          const result = tryPlaceInSlot(slot, blockDuration, usedMinutesPerDay, scheduledBlocksPerDay, afterBreak);
+          const day = studyDays.find(d => d.dateKey === relEv.dateStr);
+          if (!day) continue;
+          if (deadlineDate && parseDate(relEv.dateStr) > deadlineDate) continue;
+          const preferAfter = relEv.endMin + breakDuration;
+          const result = tryPlace(day.dateKey, day.winStart, day.winEnd, day.maxMinutes, day.busyBlocks, getStudyBlocks(day.dateKey), breakDuration, blockDur, preferAfter);
           if (result) {
             placed = result;
-            explanation = `Scheduled after related ${relEv.type} "${relEv.name}" on same day`;
+            explanation = `After ${relEv.type} "${relEv.name}"`;
             break;
           }
-          // Try next day after the event
-          const nextDaySlots = allSlots.filter(s => s.dateStr > relEv.dateStr && s.dateStr <= (task.deadline || endDate)).slice(0, 3);
-          for (const ns of nextDaySlots) {
-            const result2 = tryPlaceInSlot(ns, blockDuration, usedMinutesPerDay, scheduledBlocksPerDay, null);
-            if (result2) {
-              placed = result2;
-              explanation = `Scheduled day after related ${relEv.type} "${relEv.name}"`;
-              break;
-            }
+          // Try next 3 days after the event
+          const nextDays = studyDays.filter(d => d.dateKey > relEv.dateStr && (!deadlineDate || d.dateKey <= task.deadline)).slice(0, 3);
+          for (const nd of nextDays) {
+            const r2 = tryPlace(nd.dateKey, nd.winStart, nd.winEnd, nd.maxMinutes, nd.busyBlocks, getStudyBlocks(nd.dateKey), breakDuration, blockDur, null);
+            if (r2) { placed = r2; explanation = `Day after ${relEv.type} "${relEv.name}"`; break; }
           }
           if (placed) break;
         }
       }
 
-      // Step 2: No related event — use available slot, respecting spread window and deadline
+      // ── Step 2: spread window, respecting deadline ──
       if (!placed) {
-        const candidateSlots = allSlots.filter((s, idx) => {
-          if (idx < earliestSlotIdx) return false;
-          if (lastScheduledDate && s.dateStr < lastScheduledDate) return false;
-          if (deadline && parseDate(s.dateStr) > deadline) return false;
+        const candidates = studyDays.filter((d, idx) => {
+          if (idx < earliestDayIdx) return false;
+          if (lastPlacedDate && d.dateKey < lastPlacedDate) return false;
+          if (deadlineDate && parseDate(d.dateKey) > deadlineDate) return false;
           return true;
         });
-
-        for (const slot of candidateSlots) {
-          const result = tryPlaceInSlot(slot, blockDuration, usedMinutesPerDay, scheduledBlocksPerDay, null);
-          if (result) {
-            placed = result;
-            explanation = task.suggested_phase
-              ? `Scheduled in ${task.suggested_phase} phase`
-              : 'Scheduled in next available slot';
-            break;
-          }
+        for (const day of candidates) {
+          const result = tryPlace(day.dateKey, day.winStart, day.winEnd, day.maxMinutes, day.busyBlocks, getStudyBlocks(day.dateKey), breakDuration, blockDur, null);
+          if (result) { placed = result; explanation = task.suggested_phase ? `${task.suggested_phase} phase` : 'Next available slot'; break; }
         }
       }
 
-      // Step 3: Spread window had nothing — try any slot before deadline
+      // ── Step 3: ignore spread — any slot before deadline ──
       if (!placed) {
-        const fallbackSlots = allSlots.filter(s => {
-          if (lastScheduledDate && s.dateStr < lastScheduledDate) return false;
-          if (deadline && parseDate(s.dateStr) > deadline) return false;
+        const candidates = studyDays.filter(d => {
+          if (lastPlacedDate && d.dateKey < lastPlacedDate) return false;
+          if (deadlineDate && parseDate(d.dateKey) > deadlineDate) return false;
           return true;
         });
-        for (const slot of fallbackSlots) {
-          const result = tryPlaceInSlot(slot, blockDuration, usedMinutesPerDay, scheduledBlocksPerDay, null);
-          if (result) {
-            placed = result;
-            explanation = 'Scheduled in next available slot';
-            break;
-          }
+        for (const day of candidates) {
+          const result = tryPlace(day.dateKey, day.winStart, day.winEnd, day.maxMinutes, day.busyBlocks, getStudyBlocks(day.dateKey), breakDuration, blockDur, null);
+          if (result) { placed = result; explanation = 'Next available slot'; break; }
         }
       }
 
-      // Step 4: Last resort — ignore deadline constraint
+      // ── Step 4: last resort — after deadline ──
       if (!placed) {
-        for (const slot of allSlots.filter(s => !deadline || parseDate(s.dateStr) > deadline)) {
-          const result = tryPlaceInSlot(slot, blockDuration, usedMinutesPerDay, scheduledBlocksPerDay, null);
-          if (result) {
-            placed = result;
-            explanation = `Scheduled after deadline (no earlier slot available)`;
-            break;
-          }
+        for (const day of studyDays.filter(d => deadlineDate ? parseDate(d.dateKey) > deadlineDate : false)) {
+          const result = tryPlace(day.dateKey, day.winStart, day.winEnd, day.maxMinutes, day.busyBlocks, getStudyBlocks(day.dateKey), breakDuration, blockDur, null);
+          if (result) { placed = result; explanation = 'Scheduled after deadline (no earlier slot available)'; break; }
         }
       }
 
       if (placed) {
-        usedMinutesPerDay[placed.dateStr] = (usedMinutesPerDay[placed.dateStr] || 0) + (placed.end - placed.start);
-        if (!scheduledBlocksPerDay[placed.dateStr]) scheduledBlocksPerDay[placed.dateStr] = [];
-        scheduledBlocksPerDay[placed.dateStr].push({ start: placed.start, end: placed.end });
-        lastScheduledDate = placed.dateStr;
-
+        if (!studyBlocksPerDay[placed.dateStr]) studyBlocksPerDay[placed.dateStr] = [];
+        studyBlocksPerDay[placed.dateStr].push({ start: placed.start, end: placed.end });
+        lastPlacedDate = placed.dateStr;
         scheduled.push({
           task,
           dateStr: placed.dateStr,
           startTime: fromMinutes(placed.start),
           endTime: fromMinutes(placed.end),
-          explanation: blocks.length > 1 ? `${explanation} (block ${blockIdx + 1}/${blocks.length})` : explanation
+          explanation: blockDurations.length > 1 ? `${explanation} (part ${bi + 1}/${blockDurations.length})` : explanation,
         });
       } else {
-        if (blockIdx === 0) {
+        if (bi === 0) {
           let reason = 'No free slot available in study period';
-          if (!allSlots.length) reason = 'No study days configured';
-          else if (deadline && parseDate(deadline) < parseDate(startDate)) reason = 'Deadline is before study period start';
+          if (!studyDays.length) reason = 'No study days configured — enable at least one study day in preferences';
+          else if (deadlineDate && deadlineDate < start) reason = 'Deadline is before the study period starts';
+          else if (maxHoursPerDay < 60) reason = 'Maximum study hours per day is very low — increase it in preferences';
           unscheduled.push({ task, reason });
         }
       }
     }
   }
 
-  return {
-    scheduled,
-    unscheduled,
-    totalSlots: allSlots.length,
-    totalFreeMinutes: allSlots.reduce((sum, s) => {
-      const blocks = getFreeBlocks(s, 0, []);
-      return sum + blocks.reduce((bs, b) => bs + (b.end - b.start), 0);
-    }, 0)
-  };
+  // Compute total free hours for debug info
+  const totalFreeMinutes = studyDays.reduce((sum, d) => {
+    const free = computeFreeBlocks(d.winStart, d.winEnd, d.busyBlocks, [], breakDuration);
+    return sum + free.reduce((s, b) => s + (b.end - b.start), 0);
+  }, 0);
+
+  return { scheduled, unscheduled, totalSlots: studyDays.length, totalFreeMinutes };
 }

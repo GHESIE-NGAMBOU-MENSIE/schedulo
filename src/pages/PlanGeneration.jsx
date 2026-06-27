@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import PhaseIndicator from '@/components/schedulo/PhaseIndicator';
 import StepHeader from '@/components/schedulo/StepHeader';
 import ContextChat from '@/components/schedulo/ContextChat';
-import { scheduleTasksEngine } from '@/lib/schedulerEngine';
+import { scheduleTasksEngine, buildBusyMapPublic, findConflict } from '@/lib/schedulerEngine';
 import { motion } from 'framer-motion';
 
 export default function PlanGeneration() {
@@ -25,6 +25,8 @@ export default function PlanGeneration() {
   const [debugInfo, setDebugInfo] = useState(null);
   const [showDebug, setShowDebug] = useState(false);
   const [unscheduledTasks, setUnscheduledTasks] = useState([]);
+  const [conflicts, setConflicts] = useState([]);
+  const [tooltip, setTooltip] = useState(null); // {task, x, y}
 
   useEffect(() => { loadData(); }, [planId]);
 
@@ -38,7 +40,17 @@ export default function PlanGeneration() {
       setPlan(p);
       setTasks(t);
       setCourses(c);
-      if (t.some(task => task.scheduled_date)) setGenerated(true);
+      if (t.some(task => task.scheduled_date)) {
+        setGenerated(true);
+        const builtBusyMap = buildBusyMapPublic(p.calendar_events || [], c, p.start_date, p.end_date);
+        const foundConflicts = [];
+        for (const task of t) {
+          if (!task.scheduled_date) continue;
+          const conflictingEvent = findConflict(task, builtBusyMap);
+          if (conflictingEvent) foundConflicts.push({ task, eventName: conflictingEvent });
+        }
+        setConflicts(foundConflicts);
+      }
     } catch (e) {
       navigate('/');
     }
@@ -95,6 +107,18 @@ export default function PlanGeneration() {
       const updatedTasks = await base44.entities.StudyTask.filter({ plan_id: planId });
       setTasks(updatedTasks);
       setUnscheduledTasks(unscheduled);
+
+      // Conflict detection on generated results
+      const builtBusyMap = buildBusyMapPublic(calEvents, allCourses, p.start_date, p.end_date);
+      const foundConflicts = [];
+      for (const t of updatedTasks) {
+        if (!t.scheduled_date) continue;
+        const conflictingEvent = findConflict(t, builtBusyMap);
+        if (conflictingEvent) {
+          foundConflicts.push({ task: t, eventName: conflictingEvent });
+        }
+      }
+      setConflicts(foundConflicts);
 
       // Debug info
       const withDate = updatedTasks.filter(t => t.scheduled_date);
@@ -268,25 +292,21 @@ export default function PlanGeneration() {
 
           {generated && !generating && (
             <>
-              {/* Unscheduled warning */}
-              {unscheduledTasks.length > 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+              {/* Conflict warnings */}
+              {conflicts.length > 0 && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4">
                   <div className="flex items-start gap-2">
-                    <AlertCircle className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" />
+                    <AlertCircle className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />
                     <div>
-                      <p className="text-sm font-semibold text-amber-800">
-                        {scheduledTasks.length} of {tasks.length} tasks scheduled — {unscheduledTasks.length} could not be placed
-                      </p>
+                      <p className="text-sm font-semibold text-red-800">{conflicts.length} scheduling conflict{conflicts.length > 1 ? 's' : ''} detected</p>
                       <ul className="mt-2 space-y-1">
-                        {unscheduledTasks.map((u, i) => (
-                          <li key={i} className="text-xs text-amber-700">
-                            <span className="font-medium">{u.task.title}</span>: {u.reason}
+                        {conflicts.map((c, i) => (
+                          <li key={i} className="text-xs text-red-700">
+                            <span className="font-medium">"{c.task.title}"</span> overlaps with <span className="font-medium">"{c.eventName}"</span> on {c.task.scheduled_date} {c.task.scheduled_start}–{c.task.scheduled_end}
                           </li>
                         ))}
                       </ul>
-                      <p className="text-xs text-amber-600 mt-2">
-                        Suggestions: increase max daily hours, add more study days, or extend your study period.
-                      </p>
+                      <p className="text-xs text-red-600 mt-2">Re-generate to resolve conflicts.</p>
                     </div>
                   </div>
                 </div>
@@ -415,13 +435,17 @@ export default function PlanGeneration() {
                                 const top = toTopPx(task.scheduled_start);
                                 const height = toDurationPx(task.scheduled_start, task.scheduled_end);
                                 const color = getTaskColor(task);
+                                const hasConflict = conflicts.some(c => c.task.id === task.id);
                                 return (
                                   <div
                                     key={`t-${j}`}
-                                    className={`absolute z-20 rounded border overflow-hidden ${color.bg} ${color.border} ${color.text}`}
-                                    style={{ top, height, left: colLeft, width: colWidth, padding: '3px 5px' }}
-                                    title={`${task.title} · ${task.course_name} · ${task.scheduled_start}–${task.scheduled_end}`}
+                                    className={`absolute z-20 rounded border overflow-hidden cursor-pointer ${hasConflict ? 'border-red-500 ring-1 ring-red-400' : `${color.bg} ${color.border}`} ${color.text}`}
+                                    style={{ top, height, left: colLeft, width: colWidth, padding: '3px 5px', backgroundColor: hasConflict ? '#fee2e2' : undefined }}
+                                    onMouseEnter={(e) => setTooltip({ task, x: e.clientX, y: e.clientY })}
+                                    onMouseLeave={() => setTooltip(null)}
+                                    onClick={(e) => setTooltip(tooltip?.task?.id === task.id ? null : { task, x: e.clientX, y: e.clientY })}
                                   >
+                                    {hasConflict && <span className="absolute top-0.5 right-0.5 text-red-500 text-xs">⚠</span>}
                                     <p className="text-xs font-semibold leading-tight truncate">{task.course_name}</p>
                                     <p className="text-xs leading-tight truncate opacity-80">{task.title}</p>
                                   </div>
@@ -471,6 +495,35 @@ export default function PlanGeneration() {
                 </div>
               )}
 
+              {/* Unscheduled tasks section */}
+              {unscheduledTasks.length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
+                  <div className="flex items-start gap-2 mb-3">
+                    <AlertCircle className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-sm font-semibold text-amber-800">{unscheduledTasks.length} task{unscheduledTasks.length > 1 ? 's' : ''} could not be scheduled</p>
+                      <p className="text-xs text-amber-600 mt-0.5">Suggestions: increase max daily hours, add more study days, extend the study period, or reduce break duration.</p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    {unscheduledTasks.map((u, i) => (
+                      <div key={i} className="bg-white border border-amber-200 rounded-lg px-3 py-2.5 flex flex-wrap gap-x-4 gap-y-1 items-start">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold text-gray-900 truncate">{u.task.title}</p>
+                          <p className="text-xs text-gray-500">{u.task.course_name}</p>
+                        </div>
+                        <div className="flex flex-wrap gap-2 text-xs shrink-0">
+                          <span className="text-gray-500">{u.task.estimated_hours}h est.</span>
+                          {u.task.deadline && <span className="text-amber-700">Due {u.task.deadline}</span>}
+                          <span className={`font-medium ${u.task.priority === 'high' ? 'text-red-600' : u.task.priority === 'low' ? 'text-gray-400' : 'text-amber-600'}`}>{u.task.priority} priority</span>
+                        </div>
+                        <p className="w-full text-xs text-amber-700 mt-0.5">⚠ {u.reason}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Actions */}
               <div className="flex flex-wrap justify-between items-center gap-3">
                 <div className="flex gap-2">
@@ -489,6 +542,25 @@ export default function PlanGeneration() {
           )}
         </motion.div>
       </div>
+
+      {/* Task tooltip */}
+      {tooltip && (
+        <div
+          className="fixed z-50 bg-white border border-gray-200 rounded-xl shadow-xl p-4 w-72 pointer-events-none"
+          style={{ top: Math.min(tooltip.y + 12, window.innerHeight - 280), left: Math.min(tooltip.x + 12, window.innerWidth - 300) }}
+        >
+          <p className="font-semibold text-gray-900 text-sm mb-1">{tooltip.task.title}</p>
+          <div className="space-y-0.5 text-xs text-gray-600">
+            <p><span className="font-medium text-gray-700">Course:</span> {tooltip.task.course_name}</p>
+            <p><span className="font-medium text-gray-700">Date:</span> {tooltip.task.scheduled_date}</p>
+            <p><span className="font-medium text-gray-700">Time:</span> {tooltip.task.scheduled_start}–{tooltip.task.scheduled_end}</p>
+            <p><span className="font-medium text-gray-700">Estimated:</span> {tooltip.task.estimated_hours}h</p>
+            {tooltip.task.deadline && <p><span className="font-medium text-gray-700">Deadline:</span> {tooltip.task.deadline}</p>}
+            {tooltip.task.explanation && <p className="mt-1 text-gray-500 italic">{tooltip.task.explanation}</p>}
+          </div>
+        </div>
+      )}
+
       <ContextChat phase="plan" planId={planId} suggestions={[
         "Why is this task scheduled here?",
         "How can I free up more study time?",
