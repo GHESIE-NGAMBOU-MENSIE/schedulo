@@ -222,6 +222,55 @@ export default function Replanning() {
   const visibleWeekEnd = visibleWeekDates[6];
   const visibleWeekLabel = `${formatDate(visibleWeekStart)} – ${formatDate(visibleWeekEnd)}`;
 
+  // ── Pre-resolve weekday mentions to exact dates (JS-side, no LLM guessing) ──
+  const WEEKDAY_NAMES = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+  // Returns { date: 'YYYY-MM-DD', label: 'Wednesday, 17 Jun 2026' } or null
+  const resolveWeekdayInText = (text) => {
+    const lower = text.toLowerCase();
+    for (let i = 0; i < WEEKDAY_NAMES.length; i++) {
+      if (lower.includes(WEEKDAY_NAMES[i])) {
+        // Mon=0 in our array (visibleWeekDates[0]=Monday), map to JS day
+        // visibleWeekDates[0]=Mon, [1]=Tue...,[6]=Sun
+        const idxMap = { 1:0, 2:1, 3:2, 4:3, 5:4, 6:5, 0:6 }; // JS day → array idx
+        const jsDay = i; // 0=Sun,1=Mon,...
+        const arrayIdx = idxMap[jsDay];
+        const d = visibleWeekDates[arrayIdx];
+        return { date: getLocalDateStr(d), label: formatDate(d), dayIdx: arrayIdx };
+      }
+    }
+    return null;
+  };
+
+  // Build a compact calendar-state snapshot for a specific date
+  const buildDayContext = (dateStr) => {
+    const tasksOnDay = tasks.filter(t => t.scheduled_date === dateStr && !['completed'].includes(t.status));
+    const eventsOnDay = expandedBusyMap[dateStr] || [];
+    if (tasksOnDay.length === 0 && eventsOnDay.length === 0) {
+      return `CALENDAR STATE FOR ${dateStr}: No study tasks and no blocked events on this date.`;
+    }
+    const taskLines = tasksOnDay.map(t =>
+      `  - TASK ID:${t.id} | "${t.title}" (${t.course_name}) | ${t.scheduled_start}–${t.scheduled_end} | ${t.estimated_hours}h | status:${t.status} | deadline:${t.deadline || 'none'} | manually_moved:${t.manually_moved ? 'yes' : 'no'}`
+    ).join('\n');
+    const eventLines = eventsOnDay.map(e =>
+      `  - BLOCKED EVENT: "${e.name}" ${e.start_time}–${e.end_time}`
+    ).join('\n');
+    return `CALENDAR STATE FOR ${dateStr} (${tasksOnDay.length} task(s), ${eventsOnDay.length} blocked event(s)):
+TASKS THAT WILL BE AFFECTED:
+${taskLines || '  (none)'}
+BLOCKED EVENTS:
+${eventLines || '  (none)'}
+INSTRUCTION: You MUST include ALL tasks listed above in the "updates" array of your proposal (unless they are already completed). Do NOT return "no_change" if any tasks are listed above.`;
+  };
+
+  // Build week context snapshot
+  const buildWeekContext = (weekDates) => {
+    return weekDates.map(d => {
+      const ds = getLocalDateStr(d);
+      const t = tasks.filter(x => x.scheduled_date === ds && x.status !== 'completed');
+      return `${ds} (${d.toLocaleDateString('en-US',{weekday:'short'})}): ${t.length} task(s)`;
+    }).join(', ');
+  };
+
   // ── Send message to AI ────────────────────────────────────────────────────
   const sendMessage = async (text, extraContext = '') => {
     if (!text.trim()) return;
@@ -232,9 +281,26 @@ export default function Replanning() {
 
     try {
       const prefs = plan?.preferences || {};
-      const taskSummary = tasks.map(t =>
-        `- ID:${t.id} | "${t.title}" (${t.course_name}) | type:${t.task_type} | status:${t.status} | scheduled:${t.scheduled_date} ${t.scheduled_start}-${t.scheduled_end} | est:${t.estimated_hours}h | deadline:${t.deadline || 'none'} | priority:${t.priority} | manually_moved:${t.manually_moved ? 'yes' : 'no'}`
-      ).join('\n');
+
+      // Pre-resolve any weekday mention to a concrete date
+      const resolvedDay = resolveWeekdayInText(text);
+      const dayContext = resolvedDay ? buildDayContext(resolvedDay.date) : '';
+
+      // Check if "this week" / "next week" mentioned
+      const lowerText = text.toLowerCase();
+      const isThisWeek = lowerText.includes('this week');
+      const isNextWeek = lowerText.includes('next week');
+      const nextWeekDates = getWeekDatesFromOffset(weekOffset + 1);
+      const weekContext = (isThisWeek || isNextWeek)
+        ? buildWeekContext(isNextWeek ? nextWeekDates : visibleWeekDates)
+        : '';
+
+      // Only send non-completed tasks to keep prompt focused
+      const taskSummary = tasks
+        .filter(t => t.status !== 'completed')
+        .map(t =>
+          `- ID:${t.id} | "${t.title}" (${t.course_name}) | ${t.scheduled_date} ${t.scheduled_start}-${t.scheduled_end} | ${t.estimated_hours}h | deadline:${t.deadline || 'none'} | priority:${t.priority} | manually_moved:${t.manually_moved ? 'yes' : 'no'}`
+        ).join('\n');
 
       const history = messages.slice(-6).map(m => `${m.role}: ${m.content}`).join('\n');
 
@@ -243,16 +309,27 @@ export default function Replanning() {
 RULES — CRITICAL:
 1. SURGICAL changes only. Never reschedule unaffected tasks.
 2. Completed tasks MUST NOT be moved.
-3. Manually moved tasks (manually_moved=yes) should only move if they now conflict with a blocked time or deadline violation.
+3. Manually moved tasks (manually_moved=yes) should only move if they conflict with a blocked time or deadline violation.
 4. Only move tasks that directly conflict with the student's change.
-5. When the student mentions a weekday without a date, resolve it using the CURRENTLY VISIBLE WEEK (shown below).
-6. Before applying any ambiguous change, output a clarification question in JSON.
-7. Output your reasoning in JSON so the system can show a diff and confirm before saving.
+5. When the student mentions a weekday without a date, use the RESOLVED DATE provided below.
+6. For ambiguous scope (one day vs recurring), output a clarification question.
+7. Output JSON only — system shows a diff for the student to confirm before saving.
+8. NEVER output "no_change" if the CALENDAR STATE section below lists tasks for the affected date.
 
 CURRENTLY VISIBLE CALENDAR WEEK: ${visibleWeekLabel}
-(When student says "Monday" → they mean Monday ${getLocalDateStr(visibleWeekDates[0])})
-(When student says "this week" → ${getLocalDateStr(visibleWeekDates[0])} to ${getLocalDateStr(visibleWeekDates[6])})
-(When student says "next week" → ${getLocalDateStr(new Date(visibleWeekDates[0].getTime() + 7*86400000))} to ${getLocalDateStr(new Date(visibleWeekDates[6].getTime() + 7*86400000))})
+Resolved weekday dates for this week:
+- Monday: ${getLocalDateStr(visibleWeekDates[0])}
+- Tuesday: ${getLocalDateStr(visibleWeekDates[1])}
+- Wednesday: ${getLocalDateStr(visibleWeekDates[2])}
+- Thursday: ${getLocalDateStr(visibleWeekDates[3])}
+- Friday: ${getLocalDateStr(visibleWeekDates[4])}
+- Saturday: ${getLocalDateStr(visibleWeekDates[5])}
+- Sunday: ${getLocalDateStr(visibleWeekDates[6])}
+- "this week" means: ${getLocalDateStr(visibleWeekDates[0])} to ${getLocalDateStr(visibleWeekDates[6])}
+- "next week" means: ${getLocalDateStr(nextWeekDates[0])} to ${getLocalDateStr(nextWeekDates[6])}
+
+${dayContext ? `\n${dayContext}\n` : ''}
+${weekContext ? `\nWEEK TASK SUMMARY: ${weekContext}\n` : ''}
 
 STUDY PREFERENCES:
 Study days: ${(prefs.preferred_days || []).join(', ')}
@@ -260,7 +337,7 @@ Max hours/day: ${prefs.max_hours || 6}
 Study window: ${prefs.preferred_start || '09:00'} – ${prefs.preferred_end || '21:00'}
 Study period: ${plan?.start_date} to ${plan?.end_date}
 
-CURRENT TASKS (${tasks.length} total):
+ALL ACTIVE TASKS (${tasks.filter(t=>t.status!=='completed').length} non-completed):
 ${taskSummary}
 
 CONVERSATION HISTORY:
@@ -269,15 +346,15 @@ ${history}
 ${extraContext ? `ADDITIONAL CONTEXT: ${extraContext}\n` : ''}
 STUDENT MESSAGE: "${text}"
 
-RESPONSE FORMAT — return ONLY valid JSON with one of these structures:
+RESPONSE FORMAT — return ONLY valid JSON:
 
-Option A — Clarification needed (ambiguous weekday/scope):
+Option A — Clarification needed (e.g. "just this Monday" vs "every Monday"):
 {
   "type": "clarification",
   "question": "Do you mean [specific date] or [broader scope]?",
   "options": [
-    { "label": "Yes, just [specific date]", "context": "Scope: single day ${getLocalDateStr(visibleWeekDates[0])}" },
-    { "label": "Every [weekday] from now on", "context": "Scope: recurring from this week" },
+    { "label": "Just ${resolvedDay ? resolvedDay.label : 'this date'}", "context": "Scope: single day${resolvedDay ? ' ' + resolvedDay.date : ''}" },
+    { "label": "Every ${resolvedDay ? WEEKDAY_NAMES[resolvedDay.dayIdx !== undefined ? (resolvedDay.dayIdx === 6 ? 0 : resolvedDay.dayIdx+1) : 1] : 'weekday'} from now on", "context": "Scope: recurring" },
     { "label": "Cancel", "context": "cancel" }
   ]
 }
@@ -285,8 +362,8 @@ Option A — Clarification needed (ambiguous weekday/scope):
 Option B — Proposal ready:
 {
   "type": "proposal",
-  "understanding": "I understood: [what you think they mean with specific dates]",
-  "explanation": "[Friendly explanation of what will change and why]",
+  "understanding": "I understood: [what the student means, with the specific date(s)]",
+  "explanation": "[Friendly explanation of what will change and why, naming specific tasks]",
   "updates": [
     { "task_id": "[id]", "scheduled_date": "YYYY-MM-DD", "scheduled_start": "HH:MM", "scheduled_end": "HH:MM", "reason": "why this task moves" }
   ],
@@ -295,13 +372,13 @@ Option B — Proposal ready:
   "unchanged_count": 0
 }
 
-Option C — No change needed:
+Option C — No change needed (ONLY if the CALENDAR STATE above listed zero tasks):
 {
   "type": "no_change",
-  "message": "[Friendly explanation of why no changes are needed]"
+  "message": "[Explanation — must reference the specific date and confirm zero tasks were found there]"
 }
 
-IMPORTANT: For "updates", only include tasks that MUST move. Leave all others unchanged. If a task is completed, never include it in updates.`;
+IMPORTANT: If the CALENDAR STATE section above lists any tasks, you MUST use Option B and include those tasks in updates.`;
 
       const result = await base44.integrations.Core.InvokeLLM({
         prompt,
@@ -323,8 +400,15 @@ IMPORTANT: For "updates", only include tasks that MUST move. Leave all others un
       });
 
       if (result.type === 'clarification') {
+        // Inject concrete resolved date into options if AI returned generic placeholders
+        const opts = (result.options || []).map(o => ({
+          ...o,
+          label: resolvedDay
+            ? o.label.replace('[specific date]', resolvedDay.label).replace('[date]', resolvedDay.label)
+            : o.label
+        }));
         setMessages(prev => [...prev, { role: 'assistant', content: result.question }]);
-        setClarification({ question: result.question, options: result.options || [], originalText: text });
+        setClarification({ question: result.question, options: opts, originalText: text });
       } else if (result.type === 'proposal') {
         // Validate each proposed move against constraints before showing
         const prefs = plan?.preferences || {};
