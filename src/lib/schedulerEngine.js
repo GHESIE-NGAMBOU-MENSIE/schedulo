@@ -146,9 +146,23 @@ function buildBusyMap(calEvents, courses, startDate, endDate) {
       // Respect the event's own start_date (don't expand before the event actually begins)
       const evStartDate = evDateStr ? parseDate(evDateStr) : null;
       const recurStart = (evStartDate && evStartDate > start) ? evStartDate : start;
-      // Respect the event's own end_date if present, otherwise use plan end
-      const evEndDate = ev.end_date ? parseDate(ev.end_date) : null;
-      const recurEnd = evEndDate && evEndDate < end ? evEndDate : end;
+      // Determine recurrence end:
+      // 1. RRULE UNTIL takes priority
+      // 2. An explicit end_occurrence field that is later than start_date
+      // 3. Otherwise, for recurring events, always use plan end
+      //    (end_date often equals start_date and only marks the first occurrence duration)
+      let recurEnd = end;
+      const untilMatch = rec.match(/UNTIL=(\d{8}T\d{6}Z?|\d{8})/);
+      if (untilMatch) {
+        const untilStr = untilMatch[1].replace(/^(\d{4})(\d{2})(\d{2}).*/, '$1-$2-$3');
+        const untilDate = parseDate(untilStr);
+        if (untilDate && untilDate < end) recurEnd = untilDate;
+      } else if (ev.end_occurrence && ev.end_occurrence !== evDateStr) {
+        const endOcc = parseDate(ev.end_occurrence);
+        if (endOcc && endOcc > (parseDate(evDateStr) || start) && endOcc < end) recurEnd = endOcc;
+      }
+      // end_date is intentionally NOT used as recurrence end for recurring events
+      // because it typically represents the end time of the first occurrence, not the series end
       // Advance to the first occurrence of targetDow on or after recurStart
       let cur = new Date(recurStart);
       while (cur.getDay() !== targetDow) cur = addDays(cur, 1);
@@ -431,37 +445,43 @@ function buildWeeklyAllocationTable(tasksWithTargetWeek, weeks, courses) {
     }
   }
 
-  // ── Rule 2: Ensure ≥1 task per active course per week ────────────────────
-  // Track which tasks are still "available" (not yet assigned to an earlier week)
-  // For each week, for each course that has no task yet, pull the earliest remaining task
+  // ── Rule 2: Pull forward only flexible tasks to fill gaps ────────────────
+  // Sequential tasks (reading, assignment, numbered exercise, lecture follow-up)
+  // must NOT be pulled forward — they belong in their target week.
+  // Only flexible tasks (revision, project_work, etc.) may be moved.
+  const FLEXIBLE_TYPES = new Set(['revision', 'project_work']);
+  const FLEXIBLE_TITLE_RE = /\b(recap|revision|review|practice|writing|implementation|evaluation|literature|thesis|project)\b/i;
+
+  function isFlexibleTask(task) {
+    if (FLEXIBLE_TYPES.has(task.task_type)) return true;
+    if (FLEXIBLE_TITLE_RE.test(task.title || '')) return true;
+    return false;
+  }
+
   for (let wi = 0; wi < numWeeks; wi++) {
-    // Which courses have tasks in this week already?
     const coursesInWeek = new Set(
       weekAssignments[wi].map(e => e.task.course_id || e.task.course_name || '__none')
     );
 
-    // Which courses still have tasks in future weeks?
     for (let owi = wi + 1; owi < numWeeks; owi++) {
-      const futureEntries = weekAssignments[owi];
-      for (const entry of [...futureEntries]) {
+      for (const entry of [...weekAssignments[owi]]) {
         const courseKey = entry.task.course_id || entry.task.course_name || '__none';
         if (coursesInWeek.has(courseKey)) continue;
 
-        // Check this course isn't already represented — pull earliest task forward
-        const hasPrimaryInWeek = weekAssignments[wi].some(e =>
-          (e.task.course_id || e.task.course_name || '__none') === courseKey
-        );
-        if (hasPrimaryInWeek) continue;
+        // Only pull forward flexible tasks — never sequential ones
+        if (!isFlexibleTask(entry.task)) continue;
 
-        // Don't violate deadline
+        // Respect temporal constraints
         if (entry.task.deadline && entry.task.deadline < weeks[wi].startStr) continue;
+        if (entry.task.not_before_date && entry.task.not_before_date > weeks[wi].endStr) continue;
+        if (entry.task.target_date && entry.task.target_date > weeks[wi].endStr) continue;
+        if (entry.task.target_week != null && entry.task.target_week - 1 > wi) continue;
 
-        // Pull forward to fill this week
         weekAssignments[owi] = weekAssignments[owi].filter(e => e !== entry);
         entry.assignedWeekIdx = wi;
         weekAssignments[wi].push(entry);
         coursesInWeek.add(courseKey);
-        break; // one task per course is enough
+        break;
       }
     }
   }
