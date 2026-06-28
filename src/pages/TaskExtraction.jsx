@@ -457,7 +457,7 @@ Return JSON: { "tasks": [ ... ] }`;
                 <div className={`rounded-lg px-4 py-3 mb-4 text-xs flex flex-wrap gap-x-5 gap-y-1 items-center ${lowCount ? 'bg-amber-50 border border-amber-200' : 'bg-gray-50 border border-gray-100'}`}>
                     <span className="font-semibold text-gray-700">Coverage:</span>
                     <span className={`font-semibold ${lowCount ? 'text-amber-700' : 'text-gray-700'}`}>{taskCount} tasks created</span>
-                    <span className="text-emerald-600">{withDates} with dates/weeks</span>
+                    <span className="text-emerald-600 hidden">{withDates} with dates/weeks</span>
                     {lowCount &&
                   <span className="text-amber-700 flex items-center gap-1">
                         <AlertTriangle className="w-3 h-3" /> Fewer than 3 tasks — add more manually or re-extract.
