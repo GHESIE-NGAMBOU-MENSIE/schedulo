@@ -132,7 +132,7 @@ function parseICS(text, startDate, endDate) {
     if (dayOfWeek === 'Flexible' && ev.date) {
       const d = new Date(ev.date);
       if (!isNaN(d)) {
-        dayOfWeek = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d.getDay()];
+        dayOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][d.getDay()];
       }
     }
 
@@ -334,7 +334,7 @@ export default function StudyDates() {
           {/* Calendar import */}
           <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-6">
             <h3 className="font-semibold text-gray-900 mb-1">Import your calendar</h3>
-            <p className="text-sm text-gray-400 mb-4">Upload an .ics file from your university or personal calendar. Recurring events will be grouped into one entry.</p>
+            <p className="text-sm text-gray-400 mb-4 hidden">Upload an .ics file from your university or personal calendar. Recurring events will be grouped into one entry.</p>
             <div className="flex flex-wrap gap-3">
               <label className="cursor-pointer">
                 <input type="file" accept=".ics" onChange={handleFileUpload} className="hidden" />
@@ -402,12 +402,12 @@ export default function StudyDates() {
                 {/* Recurring toggle */}
                 <div className="flex items-center gap-3 sm:col-span-2">
                   <input
-                    type="checkbox"
-                    id="is_recurring"
-                    checked={!!manualEvent.is_recurring}
-                    onChange={(e) => setManualEvent((p) => ({ ...p, is_recurring: e.target.checked }))}
-                    className="w-4 h-4 rounded border-gray-300 text-blue-600"
-                  />
+                  type="checkbox"
+                  id="is_recurring"
+                  checked={!!manualEvent.is_recurring}
+                  onChange={(e) => setManualEvent((p) => ({ ...p, is_recurring: e.target.checked }))}
+                  className="w-4 h-4 rounded border-gray-300 text-blue-600" />
+                
                   <Label htmlFor="is_recurring" className="text-sm text-gray-600 cursor-pointer">
                     Repeats weekly (e.g. Work, Sport, Lecture every {manualEvent.day_of_week !== 'Flexible' ? manualEvent.day_of_week : 'week'})
                   </Label>
@@ -468,16 +468,16 @@ export default function StudyDates() {
                 <p className="text-xs text-gray-400">Click a badge to toggle its type</p>
               </div>
               <div className="space-y-2">
-                {events.map((ev, i) => (
-                  <div key={i} className="bg-white rounded-xl border border-blue-100 px-4 py-3 shadow-sm flex items-center justify-between gap-3">
+                {events.map((ev, i) =>
+              <div key={i} className="bg-white rounded-xl border border-blue-100 px-4 py-3 shadow-sm flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
                       <span className="font-semibold text-gray-900 truncate">{ev.name}</span>
                       <button
-                        onClick={() => {
-                          const newType = ev.type === 'course' ? 'commitment' : 'course';
-                          setEvents((prev) => prev.map((e, idx) => idx === i ? { ...e, type: newType, is_course: newType === 'course' } : e));
-                        }}
-                        className={`flex-shrink-0 px-2.5 py-0.5 rounded-full text-xs font-medium cursor-pointer transition-colors hover:opacity-80 ${ev.type === 'course' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
+                    onClick={() => {
+                      const newType = ev.type === 'course' ? 'commitment' : 'course';
+                      setEvents((prev) => prev.map((e, idx) => idx === i ? { ...e, type: newType, is_course: newType === 'course' } : e));
+                    }}
+                    className={`flex-shrink-0 px-2.5 py-0.5 rounded-full text-xs font-medium cursor-pointer transition-colors hover:opacity-80 ${ev.type === 'course' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
                         {ev.type === 'course' ? 'Course' : 'Commitment'}
                       </button>
                     </div>
@@ -491,7 +491,7 @@ export default function StudyDates() {
                       </div>
                     </div>
                   </div>
-                ))}
+              )}
               </div>
             </div>
           }
