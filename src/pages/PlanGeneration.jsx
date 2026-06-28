@@ -38,6 +38,7 @@ export default function PlanGeneration() {
   const [repairLog, setRepairLog] = useState([]);
   const [unscheduledTasks, setUnscheduledTasks] = useState([]);
   const [conflicts, setConflicts] = useState([]);
+  const [generationError, setGenerationError] = useState(null);
   const [expandedBusyMap, setExpandedBusyMap] = useState({});
   const [tooltip, setTooltip] = useState(null); // {task, x, y}
 
@@ -72,6 +73,7 @@ export default function PlanGeneration() {
 
   const generatePlan = async () => {
     setGenerating(true);
+    setGenerationError(null);
     try {
       const [p, allTasks, allCourses] = await Promise.all([
         base44.entities.StudyPlan.get(planId),
@@ -165,6 +167,7 @@ export default function PlanGeneration() {
       setGenerated(true);
     } catch (e) {
       console.error('Plan generation failed:', e);
+      setGenerationError(e.message || String(e));
     }
     setGenerating(false);
   };
@@ -272,6 +275,17 @@ export default function PlanGeneration() {
               ? "Review your generated study plan. Tasks are placed in real calendar slots based on your schedule."
               : "I'll build a context-aware study schedule by placing your tasks into the best available time slots."}
           />
+
+          {/* Generation error */}
+          {generationError && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4 flex items-start gap-2">
+              <AlertCircle className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-red-800">Generation failed</p>
+                <p className="text-xs text-red-600 mt-0.5">{generationError}</p>
+              </div>
+            </div>
+          )}
 
           {/* Generate / Loading state */}
           {!generated && (

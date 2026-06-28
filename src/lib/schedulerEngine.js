@@ -147,13 +147,16 @@ function buildBusyMap(calEvents, courses, startDate, endDate) {
       (ev.startDate ? ev.startDate.substring(0, 10) : null) ||
       (ev.start_datetime ? ev.start_datetime.substring(0, 10) : null);
 
-    const evStartTime = ev.start_time ||
+    const evStartTime = (ev.start_time && ev.start_time.trim()) ||
       (ev.start && ev.start.includes('T') ? ev.start.substring(11, 16) : null) ||
-      (ev.start_datetime && ev.start_datetime.includes('T') ? ev.start_datetime.substring(11, 16) : null) || '00:00';
-    const evEndTime = ev.end_time ||
+      (ev.start_datetime && ev.start_datetime.includes('T') ? ev.start_datetime.substring(11, 16) : null) || null;
+    const evEndTime = (ev.end_time && ev.end_time.trim()) ||
       (ev.end && ev.end.includes('T') ? ev.end.substring(11, 16) : null) ||
       (ev.end_datetime && ev.end_datetime.includes('T') ? ev.end_datetime.substring(11, 16) : null) ||
       (ev.endDate && ev.endDate.includes('T') ? ev.endDate.substring(11, 16) : null) || null;
+
+    // Events with no time info are all-day markers (e.g. thesis supervisor meetings) — skip blocking
+    if (!evStartTime) continue;
 
     const startMin = toMinutes(evStartTime);
     const endMin = evEndTime ? toMinutes(evEndTime) : startMin + 60;
@@ -579,7 +582,9 @@ function buildWeeklyAllocationTable(tasksWithMeta, weeks, courses) {
 // ─── Main scheduling engine ───────────────────────────────────────────────────
 
 export function scheduleTasksEngine(tasks, calEvents, courses, prefs, startDate, endDate) {
-  const busyMap = buildBusyMap(calEvents, courses, startDate, endDate);
+  if (!tasks || !Array.isArray(tasks)) throw new Error('tasks must be an array');
+  if (!startDate || !endDate) throw new Error(`Missing study period dates: startDate=${startDate}, endDate=${endDate}`);
+  const busyMap = buildBusyMap(calEvents || [], courses || [], startDate, endDate);
   const breakDuration = prefs.break_duration != null ? prefs.break_duration : 15;
   const maxHoursPerDay = (prefs.max_hours || 6) * 60;
   const schedule = prefs.schedule || {};
@@ -736,9 +741,9 @@ export function scheduleTasksEngine(tasks, calEvents, courses, prefs, startDate,
       const latestAllowedDate = latestAllowed ? parseDate(latestAllowed) : null;
       const preferredSchedDate = entry.preferredScheduleDate ? parseDate(entry.preferredScheduleDate) : null;
 
-      // Split tasks > 3h into 3h blocks
+      // Split tasks > 3h into 3h blocks (cap at 4 blocks max to avoid infinite scheduling)
       const blockDurations = [];
-      let rem = durationMinutes;
+      let rem = Math.min(durationMinutes, 720); // cap at 12h total
       while (rem > 0) { blockDurations.push(Math.min(rem, 180)); rem -= 180; }
 
       let lastPlacedDate = null;
@@ -845,8 +850,8 @@ export function scheduleTasksEngine(tasks, calEvents, courses, prefs, startDate,
 
         // ── Step F: Earlier free days before preferred window ─────────────────
         if (!placed) {
-          const earlierDays = studyDays.filter(d => d.dateKey < week.startStr && dayAllowed(d.dateKey));
-          for (const day of earlierDays.reverse()) {
+          const earlierDays = studyDays.filter(d => d.dateKey < week.startStr && dayAllowed(d.dateKey)).slice().reverse();
+          for (const day of earlierDays) {
             const result = tryPlace(day.dateKey, day.winStart, day.winEnd, day.maxMinutes, day.busyBlocks, getStudyBlocks(day.dateKey), breakDuration, blockDur, null);
             if (result) {
               placed = result;
