@@ -271,6 +271,103 @@ INSTRUCTION: You MUST include ALL tasks listed above in the "updates" array of y
     }).join(', ');
   };
 
+  // ── Sequence analysis for multi-day/week re-planning ─────────────────────
+  // Sequential types must preserve order; flexible types can move freely
+  const SEQUENTIAL_TYPES = ['reading', 'exercise', 'revision', 'test', 'assignment'];
+  const FLEXIBLE_TYPES = ['project_work'];
+
+  const isSequential = (task) => SEQUENTIAL_TYPES.includes(task.task_type);
+
+  // Given a set of affected task IDs (those on blocked dates), compute which
+  // additional tasks from the same course must also shift to preserve order.
+  // Returns a structured analysis object for injection into the AI prompt.
+  const buildSequenceAnalysis = (affectedDateStrings) => {
+    const affectedTasks = tasks.filter(
+      t => affectedDateStrings.includes(t.scheduled_date) && t.status !== 'completed'
+    );
+    if (affectedTasks.length === 0) return null;
+
+    // Group ALL non-completed tasks by course, sorted by scheduled date then start time
+    const byCourse = {};
+    tasks.filter(t => t.status !== 'completed' && t.scheduled_date).forEach(t => {
+      if (!byCourse[t.course_id || t.course_name]) byCourse[t.course_id || t.course_name] = [];
+      byCourse[t.course_id || t.course_name].push(t);
+    });
+    Object.values(byCourse).forEach(arr =>
+      arr.sort((a, b) => {
+        const dateComp = (a.scheduled_date || '').localeCompare(b.scheduled_date || '');
+        return dateComp !== 0 ? dateComp : (a.scheduled_start || '').localeCompare(b.scheduled_start || '');
+      })
+    );
+
+    const sequenceChains = []; // tasks that must shift together to preserve order
+    const flexibleAffected = []; // tasks that can move freely
+    const deadlineWarnings = [];
+    const processedCourses = new Set();
+
+    affectedTasks.forEach(affected => {
+      const courseKey = affected.course_id || affected.course_name;
+      if (!isSequential(affected) && !processedCourses.has(courseKey + '_flex')) {
+        flexibleAffected.push(affected);
+        processedCourses.add(courseKey + '_flex');
+        return;
+      }
+      if (processedCourses.has(courseKey)) return;
+      processedCourses.add(courseKey);
+
+      const courseArr = byCourse[courseKey] || [];
+      const affectedIdx = courseArr.findIndex(t => t.id === affected.id);
+      if (affectedIdx === -1) return;
+
+      // Find all tasks in this course that appear at or after the first affected task
+      // in the course sequence — those must all shift forward together
+      const firstAffectedInCourse = courseArr.findIndex(t => affectedDateStrings.includes(t.scheduled_date) && t.status !== 'completed');
+      const chainTasks = courseArr.slice(firstAffectedInCourse); // everything from first affected onward
+
+      const chainInfo = {
+        courseKey,
+        courseName: affected.course_name,
+        tasks: chainTasks.map((t, idx) => ({
+          id: t.id,
+          title: t.title,
+          date: t.scheduled_date,
+          start: t.scheduled_start,
+          end: t.scheduled_end,
+          type: t.task_type,
+          deadline: t.deadline,
+          positionInCourse: firstAffectedInCourse + idx,
+          mustShift: affectedDateStrings.includes(t.scheduled_date),
+          shiftReason: affectedDateStrings.includes(t.scheduled_date)
+            ? 'directly blocked'
+            : 'must follow earlier tasks in sequence'
+        }))
+      };
+
+      // Check for deadline problems — if the last task has a deadline and there's not enough room
+      chainTasks.forEach(t => {
+        if (t.deadline) {
+          const lastDate = chainTasks[chainTasks.length - 1]?.scheduled_date;
+          if (lastDate && lastDate > t.deadline) {
+            deadlineWarnings.push(`"${t.title}" (${t.course_name}) has deadline ${t.deadline} but would be pushed past it`);
+          }
+        }
+      });
+
+      sequenceChains.push(chainInfo);
+    });
+
+    return { sequenceChains, flexibleAffected, deadlineWarnings, totalAffected: affectedTasks.length };
+  };
+
+  // Detect if student is asking about a whole week or multiple days being unavailable
+  const isWeekLevelRequest = (text) => {
+    const lower = text.toLowerCase();
+    return lower.includes('this week') || lower.includes('whole week') || lower.includes('entire week') ||
+      lower.includes('sick') || lower.includes('away') || lower.includes('vacation') ||
+      lower.includes('all week') || lower.includes('not available this week') ||
+      lower.includes('can\'t study this week') || lower.includes('cannot study this week');
+  };
+
   // ── Send message to AI ────────────────────────────────────────────────────
   const sendMessage = async (text, extraContext = '') => {
     if (!text.trim()) return;
@@ -295,6 +392,46 @@ INSTRUCTION: You MUST include ALL tasks listed above in the "updates" array of y
         ? buildWeekContext(isNextWeek ? nextWeekDates : visibleWeekDates)
         : '';
 
+      // Week-level sequence analysis
+      const isWeekRequest = isWeekLevelRequest(text) || isThisWeek;
+      let sequenceContext = '';
+      if (isWeekRequest) {
+        const affectedWeekDates = visibleWeekDates.map(d => getLocalDateStr(d));
+        const analysis = buildSequenceAnalysis(affectedWeekDates);
+        if (analysis && analysis.totalAffected > 0) {
+          const chainLines = analysis.sequenceChains.map(chain => {
+            const taskLines = chain.tasks.map(t =>
+              `      ${t.mustShift ? '[MUST MOVE]' : '[MUST FOLLOW]'} ID:${t.id} | "${t.title}" | current: ${t.date} ${t.start}-${t.end} | deadline:${t.deadline || 'none'} | position:${t.positionInCourse + 1}`
+            ).join('\n');
+            return `  Course: ${chain.courseName} — ${chain.tasks.length} task(s) in sequence:\n${taskLines}`;
+          }).join('\n\n');
+
+          const flexLines = analysis.flexibleAffected.map(t =>
+            `  [FLEXIBLE] ID:${t.id} | "${t.title}" (${t.course_name}) | current: ${t.scheduled_date} ${t.scheduled_start}-${t.scheduled_end}`
+          ).join('\n');
+
+          sequenceContext = `
+SEQUENCE ANALYSIS FOR BLOCKED WEEK (${getLocalDateStr(visibleWeekDates[0])} – ${getLocalDateStr(visibleWeekDates[6])}):
+Total tasks affected on blocked dates: ${analysis.totalAffected}
+
+SEQUENTIAL CHAINS (must shift whole chain to preserve learning order):
+${chainLines || '  (none)'}
+
+FLEXIBLE TASKS (can move to any free slot without order constraint):
+${flexLines || '  (none)'}
+
+${analysis.deadlineWarnings.length > 0 ? `DEADLINE WARNINGS:\n${analysis.deadlineWarnings.map(w => '  ⚠ ' + w).join('\n')}` : ''}
+
+CRITICAL ORDERING RULES:
+- [MUST FOLLOW] tasks are LATER in the same course sequence. They MUST be scheduled AFTER their [MUST MOVE] predecessors, even if they are not on the blocked dates.
+- Never schedule a later chapter/topic before an earlier one of the same course.
+- Shift the ENTIRE chain forward by one week minimum — do not interleave with existing tasks of the same course.
+- For each [MUST MOVE] task, calculate a new date by adding 7 days to its current date. For [MUST FOLLOW] tasks that now come too early, shift them +7 days too.
+- Keep the same time slot (start/end times) when shifting — only change the date.
+- If a task deadline would be violated by shifting, include it in the proposal but flag the reason as "deadline risk".`;
+        }
+      }
+
       // Only send non-completed tasks to keep prompt focused
       const taskSummary = tasks
         .filter(t => t.status !== 'completed')
@@ -307,17 +444,17 @@ INSTRUCTION: You MUST include ALL tasks listed above in the "updates" array of y
       const prompt = `You are Schedulo, an AI study planning assistant helping a student with an ACTIVE study plan.
 
 RULES — CRITICAL:
-1. SURGICAL changes only. Never reschedule unaffected tasks.
+1. SURGICAL changes only. Never reschedule tasks not listed in affected sections below.
 2. Completed tasks MUST NOT be moved.
 3. Manually moved tasks (manually_moved=yes) should only move if they conflict with a blocked time or deadline violation.
-4. Only move tasks that directly conflict with the student's change.
-5. When the student mentions a weekday without a date, use the RESOLVED DATE provided below.
-6. For ambiguous scope (one day vs recurring), output a clarification question.
-7. Output JSON only — system shows a diff for the student to confirm before saving.
-8. NEVER output "no_change" if the CALENDAR STATE section below lists tasks for the affected date.
+4. When the student mentions a weekday without a date, use the RESOLVED DATE provided below.
+5. For ambiguous scope (one day vs recurring), output a clarification question.
+6. Output JSON only — system shows a diff for the student to confirm before saving.
+7. NEVER output "no_change" if the CALENDAR STATE or SEQUENCE ANALYSIS section lists tasks for the affected date(s).
+8. SEQUENCE ORDER: When shifting sequential tasks (readings, exercises, chapters), you MUST shift the entire course chain together. Never leave a later chapter scheduled before an earlier one.
 
 CURRENTLY VISIBLE CALENDAR WEEK: ${visibleWeekLabel}
-Resolved weekday dates for this week:
+Resolved weekday dates:
 - Monday: ${getLocalDateStr(visibleWeekDates[0])}
 - Tuesday: ${getLocalDateStr(visibleWeekDates[1])}
 - Wednesday: ${getLocalDateStr(visibleWeekDates[2])}
@@ -325,11 +462,12 @@ Resolved weekday dates for this week:
 - Friday: ${getLocalDateStr(visibleWeekDates[4])}
 - Saturday: ${getLocalDateStr(visibleWeekDates[5])}
 - Sunday: ${getLocalDateStr(visibleWeekDates[6])}
-- "this week" means: ${getLocalDateStr(visibleWeekDates[0])} to ${getLocalDateStr(visibleWeekDates[6])}
-- "next week" means: ${getLocalDateStr(nextWeekDates[0])} to ${getLocalDateStr(nextWeekDates[6])}
+- "this week" = ${getLocalDateStr(visibleWeekDates[0])} to ${getLocalDateStr(visibleWeekDates[6])}
+- "next week" = ${getLocalDateStr(nextWeekDates[0])} to ${getLocalDateStr(nextWeekDates[6])}
 
 ${dayContext ? `\n${dayContext}\n` : ''}
 ${weekContext ? `\nWEEK TASK SUMMARY: ${weekContext}\n` : ''}
+${sequenceContext ? `\n${sequenceContext}\n` : ''}
 
 STUDY PREFERENCES:
 Study days: ${(prefs.preferred_days || []).join(', ')}
@@ -362,8 +500,8 @@ Option A — Clarification needed (e.g. "just this Monday" vs "every Monday"):
 Option B — Proposal ready:
 {
   "type": "proposal",
-  "understanding": "I understood: [what the student means, with the specific date(s)]",
-  "explanation": "[Friendly explanation of what will change and why, naming specific tasks]",
+  "understanding": "I understood: [what the student means, naming the blocked dates and affected courses]",
+  "explanation": "[Friendly explanation naming specific tasks and how sequences are preserved. If whole chains shift, mention that explicitly. List any deadline warnings.]",
   "updates": [
     { "task_id": "[id]", "scheduled_date": "YYYY-MM-DD", "scheduled_start": "HH:MM", "scheduled_end": "HH:MM", "reason": "why this task moves" }
   ],
@@ -372,13 +510,13 @@ Option B — Proposal ready:
   "unchanged_count": 0
 }
 
-Option C — No change needed (ONLY if the CALENDAR STATE above listed zero tasks):
+Option C — No change needed (ONLY if affected sections above listed zero tasks):
 {
   "type": "no_change",
-  "message": "[Explanation — must reference the specific date and confirm zero tasks were found there]"
+  "message": "[Must reference the specific date(s) and confirm zero tasks found]"
 }
 
-IMPORTANT: If the CALENDAR STATE section above lists any tasks, you MUST use Option B and include those tasks in updates.`;
+IMPORTANT: Include ALL [MUST MOVE] and [MUST FOLLOW] tasks from the SEQUENCE ANALYSIS in updates. Preserve order: task at position N must have an earlier date than task at position N+1 within the same course.`;
 
       const result = await base44.integrations.Core.InvokeLLM({
         prompt,
@@ -606,21 +744,54 @@ IMPORTANT: If the CALENDAR STATE section above lists any tasks, you MUST use Opt
                   {proposal && !loading && (
                     <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 space-y-2">
                       <p className="text-xs font-semibold text-orange-800">Proposed changes ({proposal.updates?.length || 0} task{proposal.updates?.length !== 1 ? 's' : ''}):</p>
-                      {proposal.updates?.slice(0, 6).map((u, i) => {
-                        const task = tasks.find(t => t.id === u.task_id);
-                        const conflict = proposal.conflicts?.find(c => c.task_id === u.task_id);
+
+                      {/* Group by course for sequence visibility */}
+                      {(() => {
+                        const updates = proposal.updates || [];
+                        const MAX_SHOW = 8;
+                        const shown = updates.slice(0, MAX_SHOW);
+                        // Group consecutive same-course tasks to show chain label
+                        let lastCourse = null;
                         return (
-                          <div key={i} className={`rounded-lg px-3 py-2 text-xs ${conflict ? 'bg-red-50 border border-red-200' : 'bg-white border border-orange-100'}`}>
-                            <p className="font-medium text-gray-800 truncate">{task?.title || u.task_id}</p>
-                            <p className="text-gray-500">{task?.scheduled_date} {task?.scheduled_start}–{task?.scheduled_end} → <span className="font-medium text-orange-700">{u.scheduled_date} {u.scheduled_start}–{u.scheduled_end}</span></p>
-                            <p className="text-gray-400 italic">{u.reason}</p>
-                            {conflict && <p className="text-red-600 font-medium">⚠ {conflict.reason}</p>}
-                          </div>
+                          <>
+                            {shown.map((u, i) => {
+                              const task = tasks.find(t => t.id === u.task_id);
+                              const conflict = proposal.conflicts?.find(c => c.task_id === u.task_id);
+                              const isDeadlineRisk = u.reason?.toLowerCase().includes('deadline');
+                              const courseChanged = task?.course_name !== lastCourse;
+                              lastCourse = task?.course_name;
+                              return (
+                                <React.Fragment key={i}>
+                                  {courseChanged && task?.course_name && (
+                                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mt-1">{task.course_name}</p>
+                                  )}
+                                  <div className={`rounded-lg px-3 py-2 text-xs ${
+                                    conflict ? 'bg-red-50 border border-red-200' :
+                                    isDeadlineRisk ? 'bg-amber-50 border border-amber-200' :
+                                    'bg-white border border-orange-100'
+                                  }`}>
+                                    <p className="font-medium text-gray-800 truncate">{task?.title || u.task_id}</p>
+                                    <p className="text-gray-500 text-[11px]">
+                                      {task?.scheduled_date} {task?.scheduled_start}–{task?.scheduled_end}
+                                      {' → '}
+                                      <span className="font-medium text-orange-700">{u.scheduled_date} {u.scheduled_start}–{u.scheduled_end}</span>
+                                    </p>
+                                    {u.reason && <p className="text-gray-400 italic text-[10px]">{u.reason}</p>}
+                                    {conflict && <p className="text-red-600 font-medium text-[10px]">⚠ {conflict.reason}</p>}
+                                    {isDeadlineRisk && !conflict && <p className="text-amber-700 font-medium text-[10px]">⚠ Deadline risk</p>}
+                                  </div>
+                                </React.Fragment>
+                              );
+                            })}
+                            {updates.length > MAX_SHOW && (
+                              <p className="text-xs text-gray-400 text-center py-1">…and {updates.length - MAX_SHOW} more task(s)</p>
+                            )}
+                          </>
                         );
-                      })}
-                      {proposal.updates?.length > 6 && <p className="text-xs text-gray-400">…and {proposal.updates.length - 6} more</p>}
+                      })()}
+
                       {proposal.conflicts?.length > 0 && (
-                        <p className="text-xs text-red-700 font-medium">⚠ {proposal.conflicts.length} conflict(s) detected. Accepting will skip conflicting moves.</p>
+                        <p className="text-xs text-red-700 font-medium">⚠ {proposal.conflicts.length} conflict(s) detected. Conflicting moves will be skipped.</p>
                       )}
                       <div className="flex gap-2 pt-1">
                         <Button size="sm" onClick={acceptProposal} className="bg-emerald-600 hover:bg-emerald-700 flex-1">
@@ -661,7 +832,7 @@ IMPORTANT: If the CALENDAR STATE section above lists any tasks, you MUST use Opt
               <div className="flex flex-wrap gap-2">
                 {[
                   "I can't study on Monday",
-                  "I didn't finish this week's tasks",
+                  "I'm sick and can't study this week",
                   "The deadline was moved",
                   "I need to add a blocked day"
                 ].map(s => (
