@@ -11,9 +11,9 @@ import ContextChat from '@/components/schedulo/ContextChat';
 import { buildBusyMapPublic, getLocalDateStr } from '@/lib/schedulerEngine';
 import { motion } from 'framer-motion';
 
-const HOUR_PX = 56;
-const CAL_START_HOUR = 7;
-const CAL_END_HOUR = 21;
+const HOUR_PX = 40;
+const CAL_START_HOUR = 0;
+const CAL_END_HOUR = 24;
 
 export default function ActivePlan() {
   const { planId } = useParams();
@@ -229,13 +229,13 @@ export default function ActivePlan() {
                 {/* Time grid */}
                 <div className="max-h-[560px] overflow-y-auto">
                   <div className="relative grid" style={{ gridTemplateColumns: '48px repeat(7, 1fr)', height: `${(CAL_END_HOUR - CAL_START_HOUR) * HOUR_PX}px` }}>
-                    {/* Hour lines + labels */}
-                    {Array.from({ length: CAL_END_HOUR - CAL_START_HOUR }, (_, i) => CAL_START_HOUR + i).map(hour => (
+                    {/* Hour lines + labels — every 2 hours */}
+                    {Array.from({ length: 12 }, (_, i) => i * 2).map(hour => (
                       <React.Fragment key={hour}>
-                        <div className="absolute text-xs text-gray-400 text-right pr-2 leading-none" style={{ top: `${(hour - CAL_START_HOUR) * HOUR_PX}px`, left: 0, width: 44 }}>
-                          {hour}:00
+                        <div className="absolute text-xs text-gray-400 text-right pr-2 leading-none" style={{ top: `${hour * HOUR_PX}px`, left: 0, width: 44 }}>
+                          {String(hour).padStart(2, '0')}
                         </div>
-                        <div className="absolute border-t border-gray-100 pointer-events-none" style={{ top: `${(hour - CAL_START_HOUR) * HOUR_PX}px`, left: 48, right: 0 }} />
+                        <div className="absolute border-t border-gray-100 pointer-events-none" style={{ top: `${hour * HOUR_PX}px`, left: 48, right: 0 }} />
                       </React.Fragment>
                     ))}
                     {/* Day columns */}
