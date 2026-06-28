@@ -22,7 +22,7 @@ export default function ActivePlan() {
   const [tasks, setTasks] = useState([]);
   const [view, setView] = useState('calendar');
   const [filter, setFilter] = useState('all');
-  const [weekOffset, setWeekOffset] = useState(0);
+  const [weekOffset, setWeekOffset] = useState(null); // null = not yet computed
   const [loading, setLoading] = useState(true);
   const [expandedBusyMap, setExpandedBusyMap] = useState({});
 
@@ -40,6 +40,24 @@ export default function ActivePlan() {
       setTasks(t);
       const { busy } = buildBusyMapPublic(p.calendar_events || [], courses, p.start_date, p.end_date);
       setExpandedBusyMap(busy);
+
+      // Jump to the week containing the first upcoming (non-completed) scheduled task,
+      // falling back to the first scheduled task, then today.
+      const today = new Date();
+      const todayStr = today.toISOString().slice(0, 10);
+      const scheduledDates = t
+        .filter(task => task.scheduled_date && task.scheduled_start && task.scheduled_end)
+        .map(task => task.scheduled_date)
+        .sort();
+      const upcomingDate = scheduledDates.find(d => d >= todayStr) || scheduledDates[0];
+      const anchorDate = upcomingDate ? new Date(upcomingDate + 'T00:00:00') : today;
+      // Compute how many weeks anchorDate is from PLANNING_REFERENCE_DATE's Monday
+      const refMonday = new Date(PLANNING_REFERENCE_DATE);
+      refMonday.setDate(refMonday.getDate() - ((refMonday.getDay() + 6) % 7));
+      const anchorMonday = new Date(anchorDate);
+      anchorMonday.setDate(anchorDate.getDate() - ((anchorDate.getDay() + 6) % 7));
+      const diffWeeks = Math.round((anchorMonday - refMonday) / (7 * 24 * 60 * 60 * 1000));
+      setWeekOffset(diffWeeks);
     } catch (e) {
       navigate('/');
       return;
@@ -79,7 +97,7 @@ export default function ActivePlan() {
 
   const getWeekDates = () => {
     const now = new Date(PLANNING_REFERENCE_DATE);
-    now.setDate(now.getDate() + weekOffset * 7);
+    now.setDate(now.getDate() + (weekOffset || 0) * 7);
     const startDay = now.getDay();
     const monday = new Date(now);
     monday.setDate(now.getDate() - ((startDay + 6) % 7));
@@ -191,11 +209,11 @@ export default function ActivePlan() {
           {view === 'calendar' && (
             <>
               <div className="flex items-center justify-between mb-3">
-                <Button variant="ghost" size="sm" onClick={() => setWeekOffset(w => w - 1)}><ChevronLeft className="w-4 h-4" /> Previous</Button>
+                <Button variant="ghost" size="sm" onClick={() => setWeekOffset(w => (w || 0) - 1)}><ChevronLeft className="w-4 h-4" /> Previous</Button>
                 <span className="text-sm font-medium text-gray-600">
                   {weekDates[0]?.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – {weekDates[6]?.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                 </span>
-                <Button variant="ghost" size="sm" onClick={() => setWeekOffset(w => w + 1)}>Next <ChevronRight className="w-4 h-4" /></Button>
+                <Button variant="ghost" size="sm" onClick={() => setWeekOffset(w => (w || 0) + 1)}>Next <ChevronRight className="w-4 h-4" /></Button>
               </div>
               <div className="bg-white rounded-xl border border-blue-100 shadow-sm overflow-hidden mb-6">
                 {/* Day headers */}
