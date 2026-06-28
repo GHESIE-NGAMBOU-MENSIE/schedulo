@@ -51,11 +51,11 @@ export default function Feasibility() {
       if (!dayPref || dayPref.noStudy) return sum;
       const [sh, sm] = (dayPref.start || '09:00').split(':').map(Number);
       const [eh, em] = (dayPref.end || '18:00').split(':').map(Number);
-      const windowHours = Math.max(0, (eh + em / 60) - (sh + sm / 60));
+      const windowHours = Math.max(0, eh + em / 60 - (sh + sm / 60));
       return sum + Math.min(windowHours, maxHoursPerDay);
     }, 0);
 
-    const studyDaysPerWeek = DAYS.filter(day => daySchedule[day] && !daySchedule[day].noStudy).length;
+    const studyDaysPerWeek = DAYS.filter((day) => daySchedule[day] && !daySchedule[day].noStudy).length;
     const totalAvailableHours = weeklyAvailableHours * totalWeeks;
     const totalWorkload = tasks.reduce((sum, t) => sum + (t.estimated_hours || 0), 0);
     const hoursPerWeek = totalWorkload / totalWeeks;
@@ -65,12 +65,12 @@ export default function Feasibility() {
     const deadlineIssues = [];
     const overloadedWeeks = [];
 
-    tasks.forEach(t => {
+    tasks.forEach((t) => {
       if (t.deadline) {
         const dl = new Date(t.deadline);
         const daysUntil = Math.ceil((dl - PLANNING_REFERENCE_DATE) / (1000 * 60 * 60 * 24));
-        if (daysUntil < 3) deadlineIssues.push(`"${t.title}" deadline is in ${daysUntil} days — very tight!`);
-        else if (daysUntil < 7) deadlineIssues.push(`"${t.title}" deadline is in ${daysUntil} days — plan to start soon.`);
+        if (daysUntil < 3) deadlineIssues.push(`"${t.title}" deadline is in ${daysUntil} days — very tight!`);else
+        if (daysUntil < 7) deadlineIssues.push(`"${t.title}" deadline is in ${daysUntil} days — plan to start soon.`);
       }
     });
 
@@ -144,29 +144,29 @@ export default function Feasibility() {
           <StepHeader
             icon={BarChart3}
             title="Feasibility Check"
-            description="I'll compare your total workload against your available study time, deadlines, and preferences to check if your plan is realistic."
-          />
+            description="I'll compare your total workload against your available study time, deadlines, and preferences to check if your plan is realistic." />
+          
 
-          {!result && !checking && (
-            <div className="bg-white rounded-xl border border-blue-100 p-8 shadow-sm text-center mb-6">
+          {!result && !checking &&
+          <div className="bg-white rounded-xl border border-blue-100 p-8 shadow-sm text-center mb-6">
               <BarChart3 className="w-10 h-10 text-blue-400 mx-auto mb-3" />
               <p className="text-gray-600 mb-1">Ready to analyze your study plan feasibility.</p>
-              <p className="text-sm text-gray-400 mb-4">I'll check workload, deadlines, available time, and potential conflicts.</p>
+              <p className="text-sm text-gray-400 mb-4 hidden">I'll check workload, deadlines, available time, and potential conflicts.</p>
               <Button onClick={runCheck} className="bg-blue-600 hover:bg-blue-700">
                 Run feasibility check
               </Button>
             </div>
-          )}
+          }
 
-          {checking && (
-            <div className="bg-white rounded-xl border border-blue-100 p-8 shadow-sm text-center mb-6">
+          {checking &&
+          <div className="bg-white rounded-xl border border-blue-100 p-8 shadow-sm text-center mb-6">
               <Loader2 className="w-10 h-10 animate-spin text-blue-500 mx-auto mb-3" />
               <p className="text-gray-600">Analyzing your plan...</p>
             </div>
-          )}
+          }
 
-          {result && (
-            <>
+          {result &&
+          <>
               {/* Status */}
               <div className={`${statusConfig[result.status].bg} ${statusConfig[result.status].border} border rounded-xl p-6 mb-6`}>
                 <div className="flex items-center gap-3 mb-2">
@@ -179,47 +179,47 @@ export default function Feasibility() {
               {/* Stats */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
                 {[
-                  { label: 'Available hours', value: `${result.totalAvailableHours}h`, color: 'text-blue-600' },
-                  { label: 'Total workload', value: `${result.totalWorkload}h`, color: result.totalWorkload > result.totalAvailableHours ? 'text-red-600' : 'text-emerald-600' },
-                  { label: 'Hours per week', value: `${result.hoursPerWeek}h`, color: 'text-purple-600' },
-                  { label: 'Study weeks', value: result.totalWeeks, color: 'text-amber-600' }
-                ].map(stat => (
-                  <div key={stat.label} className="bg-white rounded-xl border border-blue-100 p-4 text-center shadow-sm">
+              { label: 'Available hours', value: `${result.totalAvailableHours}h`, color: 'text-blue-600' },
+              { label: 'Total workload', value: `${result.totalWorkload}h`, color: result.totalWorkload > result.totalAvailableHours ? 'text-red-600' : 'text-emerald-600' },
+              { label: 'Hours per week', value: `${result.hoursPerWeek}h`, color: 'text-purple-600' },
+              { label: 'Study weeks', value: result.totalWeeks, color: 'text-amber-600' }].
+              map((stat) =>
+              <div key={stat.label} className="bg-white rounded-xl border border-blue-100 p-4 text-center shadow-sm">
                     <p className={`text-2xl font-bold ${stat.color}`}>{stat.value}</p>
                     <p className="text-xs text-gray-400 mt-1">{stat.label}</p>
                   </div>
-                ))}
+              )}
               </div>
 
               {/* Issues */}
-              {result.issues.length > 0 && (
-                <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-4">
+              {result.issues.length > 0 &&
+            <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-4">
                   <h3 className="font-semibold text-gray-900 mb-3">Issues found</h3>
                   <ul className="space-y-2">
-                    {result.issues.map((issue, i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm text-gray-600">
+                    {result.issues.map((issue, i) =>
+                <li key={i} className="flex items-start gap-2 text-sm text-gray-600">
                         <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
                         {issue}
                       </li>
-                    ))}
+                )}
                   </ul>
                 </div>
-              )}
+            }
 
               {/* Suggestions */}
-              {result.suggestions.length > 0 && (
-                <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-6">
+              {result.suggestions.length > 0 &&
+            <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-6">
                   <h3 className="font-semibold text-gray-900 mb-3">Suggestions</h3>
                   <ul className="space-y-2">
-                    {result.suggestions.map((s, i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm text-gray-600">
+                    {result.suggestions.map((s, i) =>
+                <li key={i} className="flex items-start gap-2 text-sm text-gray-600">
                         <span className="text-blue-500 mt-0.5 flex-shrink-0">💡</span>
                         {s}
                       </li>
-                    ))}
+                )}
                   </ul>
                 </div>
-              )}
+            }
 
               <div className="flex flex-wrap gap-2 mb-6">
                 <Button variant="outline" onClick={() => navigate(`/plan/${planId}/preferences`)}>
@@ -228,12 +228,12 @@ export default function Feasibility() {
                 <Button variant="outline" onClick={() => navigate(`/plan/${planId}/tasks`)}>
                   Edit tasks
                 </Button>
-                <Button variant="outline" onClick={() => { setResult(null); runCheck(); }}>
+                <Button variant="outline" onClick={() => {setResult(null);runCheck();}}>
                   <RefreshCw className="w-4 h-4 mr-1" /> Re-check
                 </Button>
               </div>
             </>
-          )}
+          }
 
           <div className="flex justify-between items-center">
             <Button variant="ghost" onClick={() => navigate(`/plan/${planId}/tasks`)}>
@@ -246,10 +246,10 @@ export default function Feasibility() {
         </motion.div>
       </div>
       <ContextChat phase="feasibility" planId={planId} suggestions={[
-        "Why is my plan not feasible?",
-        "How can I reduce my workload?",
-        "Should I study on weekends?"
-      ]} />
-    </div>
-  );
+      "Why is my plan not feasible?",
+      "How can I reduce my workload?",
+      "Should I study on weekends?"]
+      } />
+    </div>);
+
 }
