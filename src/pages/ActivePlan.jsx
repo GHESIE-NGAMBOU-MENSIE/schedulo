@@ -12,8 +12,6 @@ import { buildBusyMapPublic, getLocalDateStr } from '@/lib/schedulerEngine';
 import { motion } from 'framer-motion';
 
 const HOUR_PX = 56;
-const CAL_START_HOUR = 7;
-const CAL_END_HOUR = 21;
 
 export default function ActivePlan() {
   const { planId } = useParams();
@@ -117,6 +115,24 @@ export default function ActivePlan() {
 
   const weekDates = getWeekDates();
   const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+  // Dynamically compute calendar range from actual tasks + busy events this week
+  const calRange = (() => {
+    const weekDateStrs = weekDates.map(d => getLocalDateStr(d));
+    const weekTasks = tasks.filter(t => weekDateStrs.includes(t.scheduled_date) && t.scheduled_start);
+    const weekEvents = weekDateStrs.flatMap(ds => expandedBusyMap[ds] || []);
+    const allTimes = [
+      ...weekTasks.map(t => parseInt(t.scheduled_start)),
+      ...weekTasks.map(t => parseInt(t.scheduled_end || t.scheduled_start)),
+      ...weekEvents.map(e => parseInt(e.start_time)),
+      ...weekEvents.map(e => parseInt(e.end_time || e.start_time)),
+    ].filter(h => !isNaN(h));
+    const minH = allTimes.length > 0 ? Math.max(0, Math.min(...allTimes) - 1) : 7;
+    const maxH = allTimes.length > 0 ? Math.min(24, Math.max(...allTimes) + 1) : 21;
+    return { start: minH, end: Math.max(maxH, minH + 2) };
+  })();
+  const CAL_START_HOUR = calRange.start;
+  const CAL_END_HOUR = calRange.end;
 
   const completedCount = tasks.filter(t => t.status === 'completed').length;
   const totalCount = tasks.length;
