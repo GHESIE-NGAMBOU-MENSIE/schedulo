@@ -134,7 +134,7 @@ export default function TaskExtraction() {
     for (const course of courseList) {
       const prompt = `You are a study planning assistant. Extract CONCRETE, SPECIFIC, ACTIONABLE study tasks from the course information below.
 
-PLANNING REFERENCE DATE: 2026-04-01
+TODAY'S DATE: ${new Date().toISOString().slice(0, 10)}
 STUDY PERIOD: ${plan.start_date} to ${plan.end_date}
 
 COURSE DETAILS:
@@ -148,47 +148,61 @@ COURSE DETAILS:
 - Priority: ${course.priority || 'medium'}
 - Course Materials/Syllabus: ${course.materials_text || 'No materials provided'}
 
-## CRITICAL: EXTRACT TEMPORAL INFORMATION
+## CRITICAL: TWO TYPES OF TASKS — UNDERSTAND THE DIFFERENCE
+
+### TYPE A — "NO PREPARATION NEEDED" tasks (lecture, reading, exercise sheet, tutorial, lab session)
+These happen IN CLASS or are handed out. The student does the follow-up AFTER the session.
+Examples: "Monday at 10:00 — English Lecture", "Week 3: Exercise Sheet 2 released", "Ch. 4 covered on April 7"
+
+→ Generate a FOLLOW-UP task (review/practice) scheduled AFTER the event.
+→ Set: not_before_date = the event date (cannot start before the session happens)
+→ Set: related_course_event_date = the event date
+→ Set: related_course_event_type = "lecture" | "exercise" | "tutorial" | "lab"
+→ Set: target_date = 1–3 days after the event date (review while fresh)
+→ task_type: "revision" for lectures, "exercise" for exercise sheets/labs
+
+### TYPE B — "PREPARATION NEEDED" tasks (quiz, test, testat, exam, presentation, submission, midterm)
+These require the student to prepare IN ADVANCE before the event date.
+Examples: "Quiz on April 14", "Testat Week 5", "Presentation on May 3", "Assignment due April 28"
+
+→ Generate a PREPARATION task scheduled BEFORE the event.
+→ Set: deadline = the event/due date (hard deadline)
+→ Set: target_date = 3–7 days before the deadline (start preparation early)
+→ Set: related_course_event_date = the event date
+→ Set: related_course_event_type = "quiz" | "test" | "testat" | "exam" | "presentation" | "assignment"
+→ task_type: "test" for quizzes/tests/tetats, "assignment" for written submissions, "project_work" for presentations
+
+## DATE EXTRACTION RULES
 
 If the materials contain dates, weeks, or session numbers, YOU MUST extract and save them.
-
-Date formats to detect: DD.MM.YYYY, MM/DD/YYYY, YYYY-MM-DD, "April 21", "April 21st", etc.
+Date formats: DD.MM.YYYY, MM/DD/YYYY, YYYY-MM-DD, "April 21", "April 21st", "Mo 10:00", "Monday 10am", etc.
 Week formats: "Week 1", "Week 3:", "KW 14", "Woche 3", "Session 3", etc.
+Day+time formats: "Monday at 10:00", "Mo. 10-12 Uhr", "Tue 14:00" → resolve to an actual YYYY-MM-DD date within the study period.
 
-For each task, determine:
-- target_date: ISO date (YYYY-MM-DD) when the topic/chapter/lecture/exercise is scheduled
-- not_before_date: same as target_date for chapter/topic/exercise/lecture tasks (don't study before it is covered)
-- target_week: integer week number if document uses weeks
-- source_week_label: the original week label from the document (e.g. "Week 3", "KW 14")
-- deadline: ISO date if the task has a submission deadline (assignments, quizzes, exams)
-- exam_date: ISO date if this task is exam preparation
-- related_course_event_date: ISO date if the task is linked to a specific class session
-- related_course_event_type: "lecture" | "exercise" | "tutorial" | "quiz" | "exam"
-- chapter_number: integer if document mentions chapter N
-- topic_number: integer if document mentions topic/session N
-- exercise_number: integer if document mentions exercise N
-- assignment_number: integer if document mentions assignment N
-- date_confidence: "exact" if taken directly from the material, "estimated" if inferred, "none" if no date info
+For each task:
+- target_date: ISO date (YYYY-MM-DD) — when the student should work on this task
+- not_before_date: ISO date — earliest the student CAN start (= event date for Type A)
+- target_week: integer week number if document uses week numbers
+- source_week_label: original week label from the document (e.g. "Week 3", "KW 14")
+- deadline: ISO date — hard due/submission/event date (Type B tasks)
+- exam_date: ISO date — if this task is exam preparation
+- related_course_event_date: ISO date — the class session / event this task is linked to
+- related_course_event_type: "lecture" | "exercise" | "tutorial" | "lab" | "quiz" | "test" | "testat" | "exam" | "presentation" | "assignment"
+- chapter_number, topic_number, exercise_number, assignment_number: integers if mentioned
+- date_confidence: "exact" if taken directly from material, "estimated" if inferred, "none" if no date info
 - source_text: the exact line from the material that gave the date/week info
-
-## DATE TYPE RULES
-
-1. Chapter/topic date → target_date + not_before_date (task belongs around this date, not before)
-2. Exercise/tutorial date → related_course_event_date (practice AFTER the session)
-3. Quiz/test date → deadline (prepare BEFORE)
-4. Assignment deadline → deadline
-5. Exam date → exam_date + deadline
 
 ## TASK EXTRACTION RULES
 
 DO NOT limit tasks. Return AS MANY tasks as the material implies.
 
-1. CHAPTERS/TOPICS → one "Read [chapter/topic name]" reading task each
-2. EXERCISES/EXERCISE SHEETS → one "Review and practice [exercise name]" exercise task each
-3. ASSIGNMENTS → "Work on assignment [N]" (assignment) + optionally "Review assignment [N]" (revision)
-4. QUIZZES/TESTS → "Prepare for quiz/test on [topic]" (test)
-5. EXAM → "Revise key concepts for exam" (revision) + "Prepare for final exam" (test)
-6. PROJECT MILESTONES → one project_work task per milestone
+1. LECTURES/SESSIONS (Type A) → "Review [topic] lecture" (revision) — scheduled AFTER the lecture date
+2. EXERCISE SHEETS/LABS (Type A) → "Work through [exercise name]" (exercise) — scheduled AFTER release/session date
+3. READINGS/CHAPTERS (Type A) → "Read Chapter [N]: [topic]" (reading) — not_before_date = when covered in class
+4. QUIZZES/TESTS/TETATS (Type B) → "Prepare for [quiz/testat] on [topic]" (test) — deadline = quiz date, target_date = 3–5 days before
+5. ASSIGNMENTS/SUBMISSIONS (Type B) → "Complete [assignment]" (assignment) — deadline = due date, target_date = 5–7 days before
+6. PRESENTATIONS (Type B) → "Prepare presentation on [topic]" (project_work) — deadline = presentation date, target_date = 5–7 days before
+7. EXAM (Type B) → "Prepare for final exam" (test) + "Revise key concepts" (revision) — deadline = exam date
 
 ## PROJECT/RESEARCH TYPE DETECTION
 
