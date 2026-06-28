@@ -46,6 +46,7 @@ export default function PlanGeneration() {
   const [tooltip, setTooltip] = useState(null); // {task, x, y}
   const [editingTask, setEditingTask] = useState(null);
   const [addingToDay, setAddingToDay] = useState(null); // { date, startTime }
+  const [showBlockedTimes, setShowBlockedTimes] = useState(true);
   const [dragInfo, setDragInfo] = useState(null); // { taskId, offsetMinutes }
   const [dragError, setDragError] = useState(null); // { reason, alternatives, task, duration }
   const calGridRef = useRef(null);
@@ -651,6 +652,10 @@ export default function PlanGeneration() {
                     <List className="w-4 h-4 mr-1" /> Task List
                   </Button>
                 </div>
+                <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none">
+                  <input type="checkbox" checked={showBlockedTimes} onChange={e => setShowBlockedTimes(e.target.checked)} className="w-3.5 h-3.5 accent-blue-600" />
+                  Show blocked times
+                </label>
                 <Select value={filter} onValueChange={setFilter}>
                   <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -735,7 +740,7 @@ export default function PlanGeneration() {
                                 onDrop={e => handleDrop(e, d)}
                               />
                               {/* Calendar events (fixed commitments) */}
-                              {dayEvents.map((ev, j) => {
+                              {showBlockedTimes && dayEvents.map((ev, j) => {
                                 const top = toTopPx(ev.start_time);
                                 const height = toDurationPx(ev.start_time, ev.end_time);
                                 return (

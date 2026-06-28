@@ -23,6 +23,7 @@ export default function ActivePlan() {
   const [weekOffset, setWeekOffset] = useState(null); // null = not yet computed
   const [loading, setLoading] = useState(true);
   const [expandedBusyMap, setExpandedBusyMap] = useState({});
+  const [showBlockedTimes, setShowBlockedTimes] = useState(true);
 
   useEffect(() => { loadData(); }, [planId]);
 
@@ -192,6 +193,14 @@ export default function ActivePlan() {
             </div>
           </div>
 
+          {/* Re-plan info banner */}
+          <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 mb-5 flex items-start gap-3">
+            <MessageCircle className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" />
+            <p className="text-xs text-blue-700">
+              <span className="font-semibold">Re-plan</span> lets you describe any changes — a missed session, a moved deadline, or a new commitment — and Schedulo will suggest how to adjust your remaining schedule to keep you on track.
+            </p>
+          </div>
+
           {/* Quick actions */}
           <div className="flex flex-wrap gap-2 mb-4">
             <Button variant="ghost" size="sm" onClick={() => navigate(`/plan/${planId}/generate`)}>
@@ -212,6 +221,10 @@ export default function ActivePlan() {
                 <SelectItem value="completed">Completed</SelectItem>
               </SelectContent>
             </Select>
+            <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none">
+              <input type="checkbox" checked={showBlockedTimes} onChange={e => setShowBlockedTimes(e.target.checked)} className="w-3.5 h-3.5 accent-blue-600" />
+              Show blocked times
+            </label>
             <div className="ml-auto flex gap-2">
               <Link to={`/plan/${planId}/replan`}>
                 <Button variant="outline" size="sm"><MessageCircle className="w-4 h-4 mr-1" /> Re-plan</Button>
@@ -265,7 +278,7 @@ export default function ActivePlan() {
                         <React.Fragment key={colIdx}>
                           <div className="absolute top-0 bottom-0 border-l border-gray-100 pointer-events-none" style={{ left: colLeft }} />
                           {/* Calendar events (fixed commitments) */}
-                          {dayEvents.map((ev, j) => (
+                          {showBlockedTimes && dayEvents.map((ev, j) => (
                             <div
                               key={`ev-${j}`}
                               className="absolute z-10 bg-gray-100 border border-gray-300 rounded text-gray-600 overflow-hidden"
@@ -277,6 +290,7 @@ export default function ActivePlan() {
                             </div>
                           ))}
                           {/* Study tasks */}
+
                           {dayTasks.map((task, j) => (
                             <button
                               key={`t-${j}`}
