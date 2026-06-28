@@ -18,6 +18,21 @@ const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 function MiniCalendar({ tasks, expandedBusyMap, showBlockedTimes }) {
   const [weekOffset, setWeekOffset] = useState(0);
 
+  useEffect(() => {
+    const scheduledDates = tasks
+      .filter(t => t.scheduled_date)
+      .map(t => t.scheduled_date)
+      .sort();
+    if (!scheduledDates.length) return;
+    const firstDate = new Date(scheduledDates[0] + 'T00:00:00');
+    const ref = new Date(PLANNING_REFERENCE_DATE);
+    const refMonday = new Date(ref);
+    refMonday.setDate(ref.getDate() - ((ref.getDay() + 6) % 7));
+    const firstMonday = new Date(firstDate);
+    firstMonday.setDate(firstDate.getDate() - ((firstDate.getDay() + 6) % 7));
+    setWeekOffset(Math.round((firstMonday - refMonday) / (7 * 86400000)));
+  }, [tasks]);
+
   const getWeekDates = () => {
     const now = new Date(PLANNING_REFERENCE_DATE);
     now.setDate(now.getDate() + weekOffset * 7);
