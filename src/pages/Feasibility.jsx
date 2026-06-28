@@ -151,7 +151,7 @@ export default function Feasibility() {
           <div className="bg-white rounded-xl border border-blue-100 p-8 shadow-sm text-center mb-6">
               <BarChart3 className="w-10 h-10 text-blue-400 mx-auto mb-3" />
               <p className="text-gray-600 mb-1">Ready to analyze your study plan feasibility.</p>
-              <p className="text-sm text-gray-400 mb-4 hidden">I'll check workload, deadlines, available time, and potential conflicts.</p>
+              
               <Button onClick={runCheck} className="bg-blue-600 hover:bg-blue-700">
                 Run feasibility check
               </Button>
