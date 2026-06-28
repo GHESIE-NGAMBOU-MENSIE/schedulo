@@ -23,33 +23,33 @@ function TaskTemporalBadges({ task }) {
   if (items.length === 0) return null;
   return (
     <div className="flex flex-wrap gap-1 mt-1.5">
-      {items.map((item, i) => (
-        <span key={i} className={`px-2 py-0.5 rounded text-xs font-medium ${item.color}`}>{item.label}</span>
-      ))}
-    </div>
-  );
+      {items.map((item, i) =>
+      <span key={i} className={`px-2 py-0.5 rounded text-xs font-medium ${item.color}`}>{item.label}</span>
+      )}
+    </div>);
+
 }
 
 function TaskEditForm({ task, courseId, onSave, onCancel, setTasks }) {
-  const update = (field, val) => setTasks(prev => ({
+  const update = (field, val) => setTasks((prev) => ({
     ...prev,
-    [courseId]: prev[courseId].map(t => t.id === task.id ? { ...t, [field]: val } : t)
+    [courseId]: prev[courseId].map((t) => t.id === task.id ? { ...t, [field]: val } : t)
   }));
 
   return (
     <div className="space-y-3">
-      <Input value={task.title} onChange={e => update('title', e.target.value)} placeholder="Task title" />
+      <Input value={task.title} onChange={(e) => update('title', e.target.value)} placeholder="Task title" />
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <Select value={task.task_type} onValueChange={v => update('task_type', v)}>
+        <Select value={task.task_type} onValueChange={(v) => update('task_type', v)}>
           <SelectTrigger><SelectValue /></SelectTrigger>
-          <SelectContent>{TASK_TYPES.map(tt => <SelectItem key={tt} value={tt}>{tt.replace('_', ' ')}</SelectItem>)}</SelectContent>
+          <SelectContent>{TASK_TYPES.map((tt) => <SelectItem key={tt} value={tt}>{tt.replace('_', ' ')}</SelectItem>)}</SelectContent>
         </Select>
-        <Input type="number" value={task.estimated_hours} onChange={e => update('estimated_hours', Number(e.target.value))} placeholder="Hours" />
+        <Input type="number" value={task.estimated_hours} onChange={(e) => update('estimated_hours', Number(e.target.value))} placeholder="Hours" />
         <div>
           <Label className="text-xs text-gray-500">Deadline</Label>
-          <Input type="date" value={task.deadline || ''} onChange={e => update('deadline', e.target.value || null)} />
+          <Input type="date" value={task.deadline || ''} onChange={(e) => update('deadline', e.target.value || null)} />
         </div>
-        <Select value={task.priority} onValueChange={v => update('priority', v)}>
+        <Select value={task.priority} onValueChange={(v) => update('priority', v)}>
           <SelectTrigger><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="low">Low</SelectItem>
@@ -61,38 +61,38 @@ function TaskEditForm({ task, courseId, onSave, onCancel, setTasks }) {
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
         <div>
           <Label className="text-xs text-gray-500">Target date</Label>
-          <Input type="date" value={task.target_date || ''} onChange={e => update('target_date', e.target.value || null)} />
+          <Input type="date" value={task.target_date || ''} onChange={(e) => update('target_date', e.target.value || null)} />
         </div>
         <div>
           <Label className="text-xs text-gray-500">Not before</Label>
-          <Input type="date" value={task.not_before_date || ''} onChange={e => update('not_before_date', e.target.value || null)} />
+          <Input type="date" value={task.not_before_date || ''} onChange={(e) => update('not_before_date', e.target.value || null)} />
         </div>
         <div>
           <Label className="text-xs text-gray-500">Target week #</Label>
-          <Input type="number" value={task.target_week || ''} onChange={e => update('target_week', e.target.value ? Number(e.target.value) : null)} placeholder="e.g. 3" />
+          <Input type="number" value={task.target_week || ''} onChange={(e) => update('target_week', e.target.value ? Number(e.target.value) : null)} placeholder="e.g. 3" />
         </div>
         <div>
           <Label className="text-xs text-gray-500">Related event date</Label>
-          <Input type="date" value={task.related_course_event_date || ''} onChange={e => update('related_course_event_date', e.target.value || null)} />
+          <Input type="date" value={task.related_course_event_date || ''} onChange={(e) => update('related_course_event_date', e.target.value || null)} />
         </div>
         <div>
           <Label className="text-xs text-gray-500">Related event type</Label>
-          <Input value={task.related_course_event_type || ''} onChange={e => update('related_course_event_type', e.target.value)} placeholder="lecture / exercise / quiz" />
+          <Input value={task.related_course_event_type || ''} onChange={(e) => update('related_course_event_type', e.target.value)} placeholder="lecture / exercise / quiz" />
         </div>
         <div>
           <Label className="text-xs text-gray-500">Exam date</Label>
-          <Input type="date" value={task.exam_date || ''} onChange={e => update('exam_date', e.target.value || null)} />
+          <Input type="date" value={task.exam_date || ''} onChange={(e) => update('exam_date', e.target.value || null)} />
         </div>
       </div>
-      {task.source_text && (
-        <p className="text-xs text-gray-400 italic border-l-2 border-gray-200 pl-2">Source: "{task.source_text}"</p>
-      )}
+      {task.source_text &&
+      <p className="text-xs text-gray-400 italic border-l-2 border-gray-200 pl-2">Source: "{task.source_text}"</p>
+      }
       <div className="flex gap-2">
         <Button size="sm" onClick={() => onSave(task.id, task)}><Check className="w-4 h-4 mr-1" /> Save</Button>
         <Button size="sm" variant="ghost" onClick={onCancel}>Cancel</Button>
       </div>
-    </div>
-  );
+    </div>);
+
 }
 
 export default function TaskExtraction() {
@@ -112,7 +112,7 @@ export default function TaskExtraction() {
   const [coverageStats, setCoverageStats] = useState({}); // courseId -> stats
   const [showReExtractConfirm, setShowReExtractConfirm] = useState(false);
 
-  useEffect(() => { loadData(); }, [planId]);
+  useEffect(() => {loadData();}, [planId]);
 
   const loadData = async () => {
     const courseList = await base44.entities.Course.filter({ plan_id: planId });
@@ -120,8 +120,8 @@ export default function TaskExtraction() {
     const existingTasks = await base44.entities.StudyTask.filter({ plan_id: planId });
     if (existingTasks.length > 0) {
       const grouped = {};
-      courseList.forEach(c => { grouped[c.id] = []; });
-      existingTasks.forEach(t => { if (grouped[t.course_id] !== undefined) grouped[t.course_id].push(t); });
+      courseList.forEach((c) => {grouped[c.id] = [];});
+      existingTasks.forEach((t) => {if (grouped[t.course_id] !== undefined) grouped[t.course_id].push(t);});
       setTasks(grouped);
       setExtracted(true);
     } else {
@@ -132,27 +132,27 @@ export default function TaskExtraction() {
   // Client-side fallback: parse chapter/topic lines from materials_text
   const buildFallbackTasks = (course) => {
     const material = course.materials_text || '';
-    const lines = material.split('\n').map(l => l.trim()).filter(Boolean);
+    const lines = material.split('\n').map((l) => l.trim()).filter(Boolean);
     const chapterRe = /^(chapter|ch\.?|topic|week|session|lecture|woche|sitzung|einheit|thema)\s*(\d+)[:\s\-–]*(.*)/i;
-    const found = lines.map(l => l.match(chapterRe)).filter(Boolean);
+    const found = lines.map((l) => l.match(chapterRe)).filter(Boolean);
 
     if (found.length > 0) {
       return found.map((m, i) => ({
         title: `Read ${m[1]} ${m[2]}${m[3] ? ': ' + m[3].trim() : ''}`,
         task_type: 'reading', estimated_hours: 2, priority: 'medium',
-        target_week: parseInt(m[2]) || (i + 1),
+        target_week: parseInt(m[2]) || i + 1,
         source_week_label: m[0].trim().slice(0, 80),
         source_text: m[0].trim().slice(0, 200),
-        date_confidence: 'none',
+        date_confidence: 'none'
       }));
     }
     // Generic fallback
     return [
-      { title: `Review course materials: ${course.name}`, task_type: 'reading', estimated_hours: 2, priority: 'medium', date_confidence: 'none' },
-      { title: `Read assigned material for ${course.name}`, task_type: 'reading', estimated_hours: 3, priority: 'medium', date_confidence: 'none' },
-      { title: `Practice exercises for ${course.name}`, task_type: 'exercise', estimated_hours: 2, priority: 'medium', date_confidence: 'none' },
-      { title: `Prepare for final assessment: ${course.name}`, task_type: 'test', estimated_hours: 3, priority: 'high', deadline: course.exam_date || null, exam_date: course.exam_date || null, date_confidence: course.exam_date ? 'exact' : 'none' },
-    ];
+    { title: `Review course materials: ${course.name}`, task_type: 'reading', estimated_hours: 2, priority: 'medium', date_confidence: 'none' },
+    { title: `Read assigned material for ${course.name}`, task_type: 'reading', estimated_hours: 3, priority: 'medium', date_confidence: 'none' },
+    { title: `Practice exercises for ${course.name}`, task_type: 'exercise', estimated_hours: 2, priority: 'medium', date_confidence: 'none' },
+    { title: `Prepare for final assessment: ${course.name}`, task_type: 'test', estimated_hours: 3, priority: 'high', deadline: course.exam_date || null, exam_date: course.exam_date || null, date_confidence: course.exam_date ? 'exact' : 'none' }];
+
   };
 
   const extractTasksForCourses = async (courseList, deleteExisting = false) => {
@@ -248,7 +248,7 @@ Return JSON: { "tasks": [ ... ] }`;
       try {
         const result = await base44.integrations.Core.InvokeLLM({
           prompt,
-          response_json_schema: taskSchema,
+          response_json_schema: taskSchema
         });
         extractedTasks = result.tasks || [];
       } catch (e) {
@@ -262,7 +262,7 @@ Return JSON: { "tasks": [ ... ] }`;
 
       const created = [];
       for (const t of extractedTasks) {
-        const toNull = v => (!v || v === '') ? null : v;
+        const toNull = (v) => !v || v === '' ? null : v;
         const record = await base44.entities.StudyTask.create({
           plan_id: planId,
           course_id: course.id,
@@ -287,13 +287,13 @@ Return JSON: { "tasks": [ ... ] }`;
           exercise_number: t.exercise_number || null,
           assignment_number: t.assignment_number || null,
           date_confidence: t.date_confidence || 'none',
-          source_text: t.source_text || null,
+          source_text: t.source_text || null
         });
         created.push(record);
       }
 
       newTasks[course.id] = created;
-      newCoverageStats[course.id] = { tasksCreated: created.length, tasksWithDates: created.filter(t => t.target_date || t.target_week || t.deadline).length };
+      newCoverageStats[course.id] = { tasksCreated: created.length, tasksWithDates: created.filter((t) => t.target_date || t.target_week || t.deadline).length };
     }
 
     setTasks(newTasks);
@@ -314,18 +314,18 @@ Return JSON: { "tasks": [ ... ] }`;
 
   const updateTask = async (taskId, updates) => {
     await base44.entities.StudyTask.update(taskId, updates);
-    const courseId = Object.keys(tasks).find(cId => tasks[cId].some(t => t.id === taskId));
+    const courseId = Object.keys(tasks).find((cId) => tasks[cId].some((t) => t.id === taskId));
     if (courseId) {
-      setTasks(prev => ({ ...prev, [courseId]: prev[courseId].map(t => t.id === taskId ? { ...t, ...updates } : t) }));
+      setTasks((prev) => ({ ...prev, [courseId]: prev[courseId].map((t) => t.id === taskId ? { ...t, ...updates } : t) }));
     }
     setEditTask(null);
   };
 
   const deleteTask = async (taskId) => {
     await base44.entities.StudyTask.delete(taskId);
-    const courseId = Object.keys(tasks).find(cId => tasks[cId].some(t => t.id === taskId));
+    const courseId = Object.keys(tasks).find((cId) => tasks[cId].some((t) => t.id === taskId));
     if (courseId) {
-      setTasks(prev => ({ ...prev, [courseId]: prev[courseId].filter(t => t.id !== taskId) }));
+      setTasks((prev) => ({ ...prev, [courseId]: prev[courseId].filter((t) => t.id !== taskId) }));
     }
   };
 
@@ -338,7 +338,7 @@ Return JSON: { "tasks": [ ... ] }`;
       deadline: newTask.deadline || null, estimated_hours: Number(newTask.estimated_hours) || 2,
       priority: newTask.priority, status: 'open', confirmed: false, date_confidence: 'none'
     });
-    setTasks(prev => ({ ...prev, [course.id]: [...(prev[course.id] || []), record] }));
+    setTasks((prev) => ({ ...prev, [course.id]: [...(prev[course.id] || []), record] }));
     setNewTask({ title: '', task_type: 'reading', deadline: '', estimated_hours: 2, priority: 'medium' });
     setShowAddTask(false);
   };
@@ -357,9 +357,9 @@ Return JSON: { "tasks": [ ... ] }`;
   };
 
   const currentCourse = courses[activeCourse];
-  const currentTasks = currentCourse ? (tasks[currentCourse.id] || []) : [];
+  const currentTasks = currentCourse ? tasks[currentCourse.id] || [] : [];
   const totalHours = Object.values(tasks).flat().reduce((sum, t) => sum + (t.estimated_hours || 0), 0);
-  const tasksWithDates = Object.values(tasks).flat().filter(t => t.target_date || t.target_week || t.deadline).length;
+  const tasksWithDates = Object.values(tasks).flat().filter((t) => t.target_date || t.target_week || t.deadline).length;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
@@ -369,23 +369,23 @@ Return JSON: { "tasks": [ ... ] }`;
           <StepHeader
             icon={ListChecks}
             title="Task Extraction"
-            description="I'll analyze your course materials and extract study tasks with dates and weeks from your syllabus or lecture plan."
-          />
+            description="I'll analyze your course materials and extract study tasks with dates and weeks from your syllabus or lecture plan." />
+          
 
-          {!extracted && extracting && (
-            <div className="bg-white rounded-xl border border-blue-100 p-8 shadow-sm text-center mb-6">
+          {!extracted && extracting &&
+          <div className="bg-white rounded-xl border border-blue-100 p-8 shadow-sm text-center mb-6">
               <Loader2 className="w-10 h-10 animate-spin text-blue-500 mx-auto mb-3" />
-              {extractingCourse && (
-                <p className="text-xs font-semibold text-blue-500 uppercase tracking-wide mb-1">{extractingCourse}</p>
-              )}
+              {extractingCourse &&
+            <p className="text-xs font-semibold text-blue-500 uppercase tracking-wide mb-1">{extractingCourse}</p>
+            }
               <p className="text-gray-700 font-medium">Extracting tasks from course material...</p>
               <p className="text-sm text-gray-400 mt-1">Detecting chapters, exercises, assignments, quizzes, and deadlines.</p>
             </div>
-          )}
+          }
 
           {/* Re-extract confirmation dialog */}
-          {showReExtractConfirm && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 mb-6">
+          {showReExtractConfirm &&
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 mb-6">
               <div className="flex items-start gap-3">
                 <AlertTriangle className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" />
                 <div className="flex-1">
@@ -404,10 +404,10 @@ Return JSON: { "tasks": [ ... ] }`;
                 </div>
               </div>
             </div>
-          )}
+          }
 
-          {extracted && (
-            <>
+          {extracted &&
+          <>
               <div className="bg-blue-50 rounded-xl p-4 mb-6 flex flex-wrap gap-4 items-center justify-between">
                 <div className="flex gap-6">
                   <div className="text-center">
@@ -419,8 +419,8 @@ Return JSON: { "tasks": [ ... ] }`;
                     <p className="text-xs text-blue-500">Total workload</p>
                   </div>
                   <div className="text-center">
-                    <p className="text-2xl font-bold text-emerald-600">{tasksWithDates}</p>
-                    <p className="text-xs text-emerald-600">With extracted dates</p>
+                    <p className="text-2xl font-bold text-emerald-600 hidden">{tasksWithDates}</p>
+                    <p className="text-xs text-emerald-600 hidden">With extracted dates</p>
                   </div>
                   <div className="text-center">
                     <p className="text-2xl font-bold text-blue-700">{courses.length}</p>
@@ -435,72 +435,72 @@ Return JSON: { "tasks": [ ... ] }`;
 
               {/* Course tabs */}
               <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
-                {courses.map((c, i) => (
-                  <button
-                    key={c.id}
-                    onClick={() => setActiveCourse(i)}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
-                      activeCourse === i ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-gray-500 hover:bg-gray-50 border border-gray-200'
-                    }`}
-                  >
+                {courses.map((c, i) =>
+              <button
+                key={c.id}
+                onClick={() => setActiveCourse(i)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
+                activeCourse === i ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-gray-500 hover:bg-gray-50 border border-gray-200'}`
+                }>
+                
                     {c.name} ({(tasks[c.id] || []).length})
                   </button>
-                ))}
+              )}
               </div>
 
               {/* Coverage stats for active course */}
               {currentCourse && (() => {
-                const taskCount = currentTasks.length;
-                const withDates = currentTasks.filter(t => t.target_date || t.target_week || t.deadline).length;
-                const lowCount = taskCount > 0 && taskCount < 3;
-                return (
-                  <div className={`rounded-lg px-4 py-3 mb-4 text-xs flex flex-wrap gap-x-5 gap-y-1 items-center ${lowCount ? 'bg-amber-50 border border-amber-200' : 'bg-gray-50 border border-gray-100'}`}>
+              const taskCount = currentTasks.length;
+              const withDates = currentTasks.filter((t) => t.target_date || t.target_week || t.deadline).length;
+              const lowCount = taskCount > 0 && taskCount < 3;
+              return (
+                <div className={`rounded-lg px-4 py-3 mb-4 text-xs flex flex-wrap gap-x-5 gap-y-1 items-center ${lowCount ? 'bg-amber-50 border border-amber-200' : 'bg-gray-50 border border-gray-100'}`}>
                     <span className="font-semibold text-gray-700">Coverage:</span>
                     <span className={`font-semibold ${lowCount ? 'text-amber-700' : 'text-gray-700'}`}>{taskCount} tasks created</span>
                     <span className="text-emerald-600">{withDates} with dates/weeks</span>
-                    {lowCount && (
-                      <span className="text-amber-700 flex items-center gap-1">
+                    {lowCount &&
+                  <span className="text-amber-700 flex items-center gap-1">
                         <AlertTriangle className="w-3 h-3" /> Fewer than 3 tasks — add more manually or re-extract.
                       </span>
-                    )}
-                  </div>
-                );
-              })()}
+                  }
+                  </div>);
+
+            })()}
 
               {/* Tasks for active course */}
               <div className="space-y-3 mb-6">
-                {currentTasks.map((task, i) => (
-                  <motion.div
-                    key={task.id}
-                    initial={{ opacity: 0, y: 5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.03 }}
-                    className="bg-white rounded-xl border border-blue-100 p-4 shadow-sm"
-                  >
-                    {editTask === task.id ? (
-                      <TaskEditForm
-                        task={task}
-                        courseId={currentCourse.id}
-                        onSave={updateTask}
-                        onCancel={() => setEditTask(null)}
-                        setTasks={setTasks}
-                      />
-                    ) : (
-                      <div className="flex items-start justify-between gap-2">
+                {currentTasks.map((task, i) =>
+              <motion.div
+                key={task.id}
+                initial={{ opacity: 0, y: 5 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.03 }}
+                className="bg-white rounded-xl border border-blue-100 p-4 shadow-sm">
+                
+                    {editTask === task.id ?
+                <TaskEditForm
+                  task={task}
+                  courseId={currentCourse.id}
+                  onSave={updateTask}
+                  onCancel={() => setEditTask(null)}
+                  setTasks={setTasks} /> :
+
+
+                <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1 flex-wrap">
                             <h4 className="font-medium text-gray-900">{task.title}</h4>
                             <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                              task.priority === 'high' ? 'bg-red-100 text-red-700' :
-                              task.priority === 'medium' ? 'bg-amber-100 text-amber-700' :
-                              'bg-green-100 text-green-700'
-                            }`}>{task.priority}</span>
-                            {task.date_confidence === 'exact' && (
-                              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">📅 exact date</span>
-                            )}
-                            {task.date_confidence === 'estimated' && (
-                              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">~ estimated</span>
-                            )}
+                      task.priority === 'high' ? 'bg-red-100 text-red-700' :
+                      task.priority === 'medium' ? 'bg-amber-100 text-amber-700' :
+                      'bg-green-100 text-green-700'}`
+                      }>{task.priority}</span>
+                            {task.date_confidence === 'exact' &&
+                      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">📅 exact date</span>
+                      }
+                            {task.date_confidence === 'estimated' &&
+                      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">~ estimated</span>
+                      }
                           </div>
                           <div className="flex flex-wrap gap-2 text-xs text-gray-400">
                             <span className="bg-gray-100 px-2 py-0.5 rounded">{task.task_type?.replace('_', ' ')}</span>
@@ -509,39 +509,39 @@ Return JSON: { "tasks": [ ... ] }`;
                             {task.suggested_phase && <span>📍 {task.suggested_phase}</span>}
                           </div>
                           <TaskTemporalBadges task={task} />
-                          {task.source_text && (
-                            <button
-                              onClick={() => setExpandedSource(p => ({ ...p, [task.id]: !p[task.id] }))}
-                              className="mt-1.5 flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600"
-                            >
+                          {task.source_text &&
+                    <button
+                      onClick={() => setExpandedSource((p) => ({ ...p, [task.id]: !p[task.id] }))}
+                      className="mt-1.5 flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600">
+                      
                               {expandedSource[task.id] ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                               Source text
                             </button>
-                          )}
-                          {expandedSource[task.id] && task.source_text && (
-                            <p className="mt-1 text-xs text-gray-500 italic border-l-2 border-gray-200 pl-2">"{task.source_text}"</p>
-                          )}
+                    }
+                          {expandedSource[task.id] && task.source_text &&
+                    <p className="mt-1 text-xs text-gray-500 italic border-l-2 border-gray-200 pl-2">"{task.source_text}"</p>
+                    }
                         </div>
                         <div className="flex gap-1 flex-shrink-0">
                           <button onClick={() => setEditTask(task.id)} className="p-1.5 hover:bg-gray-100 rounded-lg"><Edit2 className="w-3.5 h-3.5 text-gray-400" /></button>
                           <button onClick={() => deleteTask(task.id)} className="p-1.5 hover:bg-red-50 rounded-lg"><Trash2 className="w-3.5 h-3.5 text-red-400" /></button>
                         </div>
                       </div>
-                    )}
+                }
                   </motion.div>
-                ))}
+              )}
 
-                {showAddTask ? (
-                  <div className="bg-white rounded-xl border border-blue-200 p-4 shadow-sm space-y-3">
-                    <Input value={newTask.title} onChange={e => setNewTask(p => ({ ...p, title: e.target.value }))} placeholder="Task title" />
+                {showAddTask ?
+              <div className="bg-white rounded-xl border border-blue-200 p-4 shadow-sm space-y-3">
+                    <Input value={newTask.title} onChange={(e) => setNewTask((p) => ({ ...p, title: e.target.value }))} placeholder="Task title" />
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                      <Select value={newTask.task_type} onValueChange={v => setNewTask(p => ({ ...p, task_type: v }))}>
+                      <Select value={newTask.task_type} onValueChange={(v) => setNewTask((p) => ({ ...p, task_type: v }))}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>{TASK_TYPES.map(tt => <SelectItem key={tt} value={tt}>{tt.replace('_', ' ')}</SelectItem>)}</SelectContent>
+                        <SelectContent>{TASK_TYPES.map((tt) => <SelectItem key={tt} value={tt}>{tt.replace('_', ' ')}</SelectItem>)}</SelectContent>
                       </Select>
-                      <Input type="number" value={newTask.estimated_hours} onChange={e => setNewTask(p => ({ ...p, estimated_hours: e.target.value }))} placeholder="Hours" />
-                      <Input type="date" value={newTask.deadline} onChange={e => setNewTask(p => ({ ...p, deadline: e.target.value }))} />
-                      <Select value={newTask.priority} onValueChange={v => setNewTask(p => ({ ...p, priority: v }))}>
+                      <Input type="number" value={newTask.estimated_hours} onChange={(e) => setNewTask((p) => ({ ...p, estimated_hours: e.target.value }))} placeholder="Hours" />
+                      <Input type="date" value={newTask.deadline} onChange={(e) => setNewTask((p) => ({ ...p, deadline: e.target.value }))} />
+                      <Select value={newTask.priority} onValueChange={(v) => setNewTask((p) => ({ ...p, priority: v }))}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="low">Low</SelectItem>
@@ -554,12 +554,12 @@ Return JSON: { "tasks": [ ... ] }`;
                       <Button size="sm" onClick={addTask} disabled={!newTask.title.trim()}><Plus className="w-4 h-4 mr-1" /> Add</Button>
                       <Button size="sm" variant="ghost" onClick={() => setShowAddTask(false)}>Cancel</Button>
                     </div>
-                  </div>
-                ) : (
-                  <button onClick={() => setShowAddTask(true)} className="w-full py-3 border border-dashed border-blue-200 rounded-xl text-sm text-blue-500 hover:bg-blue-50 transition-colors">
+                  </div> :
+
+              <button onClick={() => setShowAddTask(true)} className="w-full py-3 border border-dashed border-blue-200 rounded-xl text-sm text-blue-500 hover:bg-blue-50 transition-colors">
                     <Plus className="w-4 h-4 inline mr-1" /> Add task manually
                   </button>
-                )}
+              }
               </div>
 
               <div className="flex justify-between items-center">
@@ -571,14 +571,14 @@ Return JSON: { "tasks": [ ... ] }`;
                 </Button>
               </div>
             </>
-          )}
+          }
         </motion.div>
       </div>
       <ContextChat phase="tasks" planId={planId} suggestions={[
-        "How are task hours estimated?",
-        "Why does a task have a target date?",
-        "Can I change the deadline?"
-      ]} />
-    </div>
-  );
+      "How are task hours estimated?",
+      "Why does a task have a target date?",
+      "Can I change the deadline?"]
+      } />
+    </div>);
+
 }
