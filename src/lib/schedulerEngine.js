@@ -112,9 +112,14 @@ function buildBusyMap(calEvents, courses, startDate, endDate) {
     const courseId = ev.course_id || matchEventToCourse(ev, courses);
 
     const rec = (ev.recurrence || ev.recurrence_rule || ev.rrule || '').toString().toUpperCase();
+    // Also treat as recurring if the event has a fixed day_of_week (e.g. manually added Work/Sport)
+    // or if end_occurrence is different from start_date (multiple pre-expanded occurrences)
+    const hasFixedDay = ev.day_of_week && ev.day_of_week !== 'Flexible';
+    const hasMultipleOccurrences = ev.end_occurrence && ev.end_occurrence !== (ev.start_date || ev.date);
     const isRecurring =
       ev.is_recurring === true || ev.is_recurring === 'true' ||
-      rec === 'WEEKLY' || rec.includes('FREQ=WEEKLY');
+      rec === 'WEEKLY' || rec.includes('FREQ=WEEKLY') ||
+      hasFixedDay || hasMultipleOccurrences;
 
     const evDateStr = ev.start_date || ev.date ||
       (ev.start ? ev.start.substring(0, 10) : null) ||

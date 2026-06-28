@@ -152,7 +152,7 @@ function parseICS(text, startDate, endDate) {
   return result;
 }
 
-const emptyManual = { name: '', type: 'commitment', start_date: '', end_date: '', start_time: '', end_time: '', day_of_week: 'Flexible' };
+const emptyManual = { name: '', type: 'commitment', start_date: '', end_date: '', start_time: '', end_time: '', day_of_week: 'Flexible', is_recurring: false };
 
 export default function StudyDates() {
   const { planId } = useParams();
@@ -220,7 +220,7 @@ export default function StudyDates() {
     const ev = {
       ...manualEvent,
       is_course: isCourse(manualEvent.type),
-      is_recurring: false
+      is_recurring: !!manualEvent.is_recurring
     };
     if (editIdx !== null) {
       setEvents((prev) => prev.map((e, i) => i === editIdx ? ev : e));
@@ -242,7 +242,8 @@ export default function StudyDates() {
       end_date: ev.end_date || ev.date || '',
       start_time: ev.start_time || '',
       end_time: ev.end_time || '',
-      day_of_week: ev.day_of_week || 'Flexible'
+      day_of_week: ev.day_of_week || 'Flexible',
+      is_recurring: !!ev.is_recurring
     });
     setManualErrors({});
     setEditIdx(idx);
@@ -396,6 +397,20 @@ export default function StudyDates() {
                   {manualEvent.day_of_week === 'Flexible' &&
                 <p className="text-xs text-gray-400 mt-1">Flexible = no fixed day; can be done any time.</p>
                 }
+                </div>
+
+                {/* Recurring toggle */}
+                <div className="flex items-center gap-3 sm:col-span-2">
+                  <input
+                    type="checkbox"
+                    id="is_recurring"
+                    checked={!!manualEvent.is_recurring}
+                    onChange={(e) => setManualEvent((p) => ({ ...p, is_recurring: e.target.checked }))}
+                    className="w-4 h-4 rounded border-gray-300 text-blue-600"
+                  />
+                  <Label htmlFor="is_recurring" className="text-sm text-gray-600 cursor-pointer">
+                    Repeats weekly (e.g. Work, Sport, Lecture every {manualEvent.day_of_week !== 'Flexible' ? manualEvent.day_of_week : 'week'})
+                  </Label>
                 </div>
 
                 {/* Start date */}
