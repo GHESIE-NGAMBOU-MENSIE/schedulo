@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
-import { ListChecks, ArrowRight, ArrowLeft, Loader2, Edit2, Check, Trash2, Plus, ChevronDown, ChevronUp, Calendar, Clock } from 'lucide-react';
+import { ListChecks, ArrowRight, ArrowLeft, Loader2, Edit2, Check, Trash2, Plus, ChevronDown, ChevronUp, Calendar, Clock, AlertTriangle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -101,6 +101,8 @@ export default function TaskExtraction() {
   const [courses, setCourses] = useState([]);
   const [tasks, setTasks] = useState({});
   const [extracting, setExtracting] = useState(false);
+  const [extractingCourse, setExtractingCourse] = useState('');
+  const [extractStep, setExtractStep] = useState(''); // 'source_items' | 'tasks'
   const [extracted, setExtracted] = useState(false);
   const [editTask, setEditTask] = useState(null);
   const [activeCourse, setActiveCourse] = useState(0);
@@ -108,6 +110,8 @@ export default function TaskExtraction() {
   const [newTask, setNewTask] = useState({ title: '', task_type: 'reading', deadline: '', estimated_hours: 2, priority: 'medium' });
   const [confirming, setConfirming] = useState(false);
   const [expandedSource, setExpandedSource] = useState({});
+  const [coverageStats, setCoverageStats] = useState({}); // courseId -> stats
+  const [showReExtractConfirm, setShowReExtractConfirm] = useState(false);
 
   useEffect(() => { loadData(); }, [planId]);
 
@@ -122,167 +126,205 @@ export default function TaskExtraction() {
       setTasks(grouped);
       setExtracted(true);
     } else {
-      extractTasksForCourses(courseList);
+      extractTasksForCourses(courseList, false);
     }
   };
 
-  const extractTasksForCourses = async (courseList) => {
+  const extractTasksForCourses = async (courseList, deleteExisting = false) => {
     setExtracting(true);
+    setShowReExtractConfirm(false);
     const newTasks = {};
+    const newCoverageStats = {};
     const plan = await base44.entities.StudyPlan.get(planId);
 
+    // Delete existing tasks for this plan before re-extracting
+    if (deleteExisting) {
+      await base44.entities.StudyTask.deleteMany({ plan_id: planId });
+    }
+
     for (const course of courseList) {
-      const prompt = `You are a study planning assistant. Extract CONCRETE, SPECIFIC, ACTIONABLE study tasks from the course information below.
+      setExtractingCourse(course.name);
 
-TODAY'S DATE: ${new Date().toISOString().slice(0, 10)}
-STUDY PERIOD: ${plan.start_date} to ${plan.end_date}
+      // ── Pass 1: Extract source items ──────────────────────────────────────
+      setExtractStep('source_items');
 
-COURSE DETAILS:
-- Name: ${course.name}
-- Type: ${(course.course_type || []).join(', ')}
-- Credit Points: ${course.credit_points || 'unknown'}
-- Exam Date: ${course.exam_date || 'unknown'}
-- Description: ${course.description || 'No description'}
-- Difficulty: ${course.difficulty || 'medium'}
-- Familiarity: ${course.familiarity || 'medium'}
-- Priority: ${course.priority || 'medium'}
-- Course Materials/Syllabus: ${course.materials_text || 'No materials provided'}
-
-## CRITICAL: TWO TYPES OF TASKS — UNDERSTAND THE DIFFERENCE
-
-### TYPE A — "NO PREPARATION NEEDED" tasks (lecture, reading, exercise sheet, tutorial, lab session)
-These happen IN CLASS or are handed out. The student does the follow-up AFTER the session.
-Examples: "Monday at 10:00 — English Lecture", "Week 3: Exercise Sheet 2 released", "Ch. 4 covered on April 7"
-
-→ Generate a FOLLOW-UP task (review/practice) scheduled AFTER the event.
-→ Set: not_before_date = the event date (cannot start before the session happens)
-→ Set: related_course_event_date = the event date
-→ Set: related_course_event_type = "lecture" | "exercise" | "tutorial" | "lab"
-→ Set: target_date = 1–3 days after the event date (review while fresh)
-→ task_type: "revision" for lectures, "exercise" for exercise sheets/labs
-
-### TYPE B — "PREPARATION NEEDED" tasks (quiz, test, testat, exam, presentation, submission, midterm)
-These require the student to prepare IN ADVANCE before the event date.
-Examples: "Quiz on April 14", "Testat Week 5", "Presentation on May 3", "Assignment due April 28"
-
-→ Generate a PREPARATION task scheduled BEFORE the event.
-→ Set: deadline = the event/due date (hard deadline)
-→ Set: target_date = 3–7 days before the deadline (start preparation early)
-→ Set: related_course_event_date = the event date
-→ Set: related_course_event_type = "quiz" | "test" | "testat" | "exam" | "presentation" | "assignment"
-→ task_type: "test" for quizzes/tests/tetats, "assignment" for written submissions, "project_work" for presentations
-
-## DATE EXTRACTION RULES
-
-If the materials contain dates, weeks, or session numbers, YOU MUST extract and save them.
-Date formats: DD.MM.YYYY, MM/DD/YYYY, YYYY-MM-DD, "April 21", "April 21st", "Mo 10:00", "Monday 10am", etc.
-Week formats: "Week 1", "Week 3:", "KW 14", "Woche 3", "Session 3", etc.
-Day+time formats: "Monday at 10:00", "Mo. 10-12 Uhr", "Tue 14:00" → resolve to an actual YYYY-MM-DD date within the study period.
-
-For each task:
-- target_date: ISO date (YYYY-MM-DD) — when the student should work on this task
-- not_before_date: ISO date — earliest the student CAN start (= event date for Type A)
-- target_week: integer week number if document uses week numbers
-- source_week_label: original week label from the document (e.g. "Week 3", "KW 14")
-- deadline: ISO date — hard due/submission/event date (Type B tasks)
-- exam_date: ISO date — if this task is exam preparation
-- related_course_event_date: ISO date — the class session / event this task is linked to
-- related_course_event_type: "lecture" | "exercise" | "tutorial" | "lab" | "quiz" | "test" | "testat" | "exam" | "presentation" | "assignment"
-- chapter_number, topic_number, exercise_number, assignment_number: integers if mentioned
-- date_confidence: "exact" if taken directly from material, "estimated" if inferred, "none" if no date info
-- source_text: the exact line from the material that gave the date/week info
-
-## TASK EXTRACTION RULES
-
-DO NOT limit tasks. Return AS MANY tasks as the material implies.
-
-1. LECTURES/SESSIONS (Type A) → "Review [topic] lecture" (revision) — scheduled AFTER the lecture date
-2. EXERCISE SHEETS/LABS (Type A) → "Work through [exercise name]" (exercise) — scheduled AFTER release/session date
-3. READINGS/CHAPTERS (Type A) → "Read Chapter [N]: [topic]" (reading) — not_before_date = when covered in class
-4. QUIZZES/TESTS/TETATS (Type B) → "Prepare for [quiz/testat] on [topic]" (test) — deadline = quiz date, target_date = 3–5 days before
-5. ASSIGNMENTS/SUBMISSIONS (Type B) → "Complete [assignment]" (assignment) — deadline = due date, target_date = 5–7 days before
-6. PRESENTATIONS (Type B) → "Prepare presentation on [topic]" (project_work) — deadline = presentation date, target_date = 5–7 days before
-7. EXAM (Type B) → "Prepare for final exam" (test) + "Revise key concepts" (revision) — deadline = exam date
-
-## PROJECT/RESEARCH TYPE DETECTION
-
-For LITERATURE REVIEW: Refine research question, Define search terms, Define inclusion/exclusion criteria, Select databases, Conduct literature search, Screen results, Read selected papers, Extract data, Synthesize findings, Write literature review, Revise, Prepare submission.
-For DESIGN SCIENCE: Refine research question, Understand DSR approach, Define problem, Identify needs, Derive requirements, Design artifact, Develop prototype, Plan evaluation, Conduct evaluation, Analyze results, Write report sections, Revise, Prepare submission.
-For IMPLEMENTATION: Define requirements, Design solution, Set up environment, Implement core, Test, Fix issues, Document, Present, Submit.
-For SEMINAR/WRITING: Choose topic, Search literature, Read sources, Create outline, Write draft, Revise, Prepare presentation, Practice, Submit.
-
-## TIME ESTIMATION
-
-Total workload = credit_points × 27 hours, adjusted by difficulty and familiarity.
-Distribute proportionally across tasks.
-
-## OUTPUT FORMAT
-
-Return JSON with a "tasks" array. Each task object:
-{
-  "title": "specific action-oriented title",
-  "task_type": "reading|assignment|exercise|revision|test|project_work",
-  "deadline": "YYYY-MM-DD or null",
-  "estimated_hours": number,
-  "priority": "low|medium|high",
-  "dependencies": [],
-  "suggested_phase": "early semester|mid semester|before exam|throughout",
-  "target_date": "YYYY-MM-DD or null",
-  "not_before_date": "YYYY-MM-DD or null",
-  "target_week": number or null,
-  "source_week_label": "string or null",
-  "related_course_event_date": "YYYY-MM-DD or null",
-  "related_course_event_type": "string or null",
-  "exam_date": "YYYY-MM-DD or null",
-  "chapter_number": number or null,
-  "topic_number": number or null,
-  "exercise_number": number or null,
-  "assignment_number": number or null,
-  "date_confidence": "exact|estimated|none",
-  "source_text": "string or null"
-}`;
-
-      try {
-        const result = await base44.integrations.Core.InvokeLLM({
-          prompt,
-          response_json_schema: {
+      const sourceItemSchema = {
+        type: "object",
+        properties: {
+          source_items: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                item_type: { type: "string" },
+                number: { type: "number" },
+                title: { type: "string" },
+                date: { type: "string" },
+                week: { type: "number" },
+                week_label: { type: "string" },
+                source_line: { type: "string" },
+                date_confidence: { type: "string" }
+              }
+            }
+          },
+          summary: {
             type: "object",
             properties: {
-              tasks: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    title: { type: "string" },
-                    task_type: { type: "string" },
-                    deadline: { type: "string" },
-                    estimated_hours: { type: "number" },
-                    priority: { type: "string" },
-                    dependencies: { type: "array", items: { type: "string" } },
-                    suggested_phase: { type: "string" },
-                    target_date: { type: "string" },
-                    not_before_date: { type: "string" },
-                    target_week: { type: "number" },
-                    source_week_label: { type: "string" },
-                    related_course_event_date: { type: "string" },
-                    related_course_event_type: { type: "string" },
-                    exam_date: { type: "string" },
-                    chapter_number: { type: "number" },
-                    topic_number: { type: "number" },
-                    exercise_number: { type: "number" },
-                    assignment_number: { type: "number" },
-                    date_confidence: { type: "string" },
-                    source_text: { type: "string" }
-                  }
-                }
+              chapters: { type: "number" },
+              topics: { type: "number" },
+              sessions: { type: "number" },
+              exercises: { type: "number" },
+              assignments: { type: "number" },
+              quizzes_tests: { type: "number" },
+              exams: { type: "number" },
+              milestones: { type: "number" }
+            }
+          }
+        }
+      };
+
+      const pass1Prompt = `You are a course material parser. Your job is to enumerate EVERY structured item in the uploaded course material — do NOT summarize.
+
+COURSE: ${course.name}
+STUDY PERIOD: ${plan.start_date} to ${plan.end_date}
+MATERIALS:
+${course.materials_text || '(no materials provided — use course description below)'}
+DESCRIPTION: ${course.description || ''}
+EXAM DATE: ${course.exam_date || 'unknown'}
+
+## YOUR TASK
+
+Go through the course material line by line and list EVERY item you find. Be exhaustive.
+
+For each item, identify:
+- item_type: "chapter" | "topic" | "session" | "lecture" | "exercise" | "assignment" | "quiz" | "test" | "exam" | "presentation" | "project_milestone" | "reading" | "deadline" | "submission" | "testat" | "lab"
+- number: sequence number if present (1, 2, 3...)
+- title: the title or description of the item
+- date: exact date in YYYY-MM-DD format if present, null if not
+- week: week number if present
+- week_label: original label (e.g. "Week 3", "KW 14", "Woche 2")
+- source_line: the exact line/text from the material
+- date_confidence: "exact" | "estimated" | "none"
+
+## RULES
+
+1. If the material lists 12 chapters → return 12 chapter items
+2. If the material lists 10 weekly sessions → return 10 session items
+3. If the material lists 5 exercise sheets → return 5 exercise items
+4. DO NOT group or summarize. Each item in the material = one entry in source_items.
+5. Also include a summary count of how many items of each type you found.
+
+Return JSON matching the schema.`;
+
+      let sourceItems = [];
+      let coverageSummary = {};
+      try {
+        const pass1Result = await base44.integrations.Core.InvokeLLM({
+          prompt: pass1Prompt,
+          response_json_schema: sourceItemSchema,
+          model: 'claude_sonnet_4_6'
+        });
+        sourceItems = pass1Result.source_items || [];
+        coverageSummary = pass1Result.summary || {};
+      } catch (e) {
+        console.error('Pass 1 failed for', course.name, e);
+      }
+
+      newCoverageStats[course.id] = { ...coverageSummary, sourceItemCount: sourceItems.length };
+
+      // ── Pass 2: For each source item, generate study tasks ────────────────
+      setExtractStep('tasks');
+
+      const taskSchema = {
+        type: "object",
+        properties: {
+          tasks: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                title: { type: "string" },
+                task_type: { type: "string" },
+                deadline: { type: "string" },
+                estimated_hours: { type: "number" },
+                priority: { type: "string" },
+                dependencies: { type: "array", items: { type: "string" } },
+                suggested_phase: { type: "string" },
+                target_date: { type: "string" },
+                not_before_date: { type: "string" },
+                target_week: { type: "number" },
+                source_week_label: { type: "string" },
+                related_course_event_date: { type: "string" },
+                related_course_event_type: { type: "string" },
+                exam_date: { type: "string" },
+                chapter_number: { type: "number" },
+                topic_number: { type: "number" },
+                exercise_number: { type: "number" },
+                assignment_number: { type: "number" },
+                date_confidence: { type: "string" },
+                source_text: { type: "string" }
               }
             }
           }
+        }
+      };
+
+      const sourceItemsJson = sourceItems.length > 0
+        ? JSON.stringify(sourceItems, null, 2)
+        : `(no source items extracted — generate tasks from description)\nCourse: ${course.name}\nDescription: ${course.description || ''}\nMaterials: ${course.materials_text || ''}`;
+
+      const pass2Prompt = `You are a study task generator. For each source item below, create one or more concrete study tasks.
+
+COURSE: ${course.name}
+TYPE: ${(course.course_type || []).join(', ')}
+CREDIT POINTS: ${course.credit_points || 'unknown'}
+DIFFICULTY: ${course.difficulty || 'medium'} | FAMILIARITY: ${course.familiarity || 'medium'} | PRIORITY: ${course.priority || 'medium'}
+EXAM DATE: ${course.exam_date || 'none'}
+STUDY PERIOD: ${plan.start_date} to ${plan.end_date}
+TODAY: ${new Date().toISOString().slice(0, 10)}
+
+SOURCE ITEMS (one entry per chapter/topic/session/exercise/etc. found in the course material):
+${sourceItemsJson}
+
+## RULES — MUST FOLLOW EXACTLY
+
+### One task per source item minimum
+For EVERY source item in the list above, create at least one task.
+- chapter → "Read Chapter N: [title]" (reading)
+- session/lecture → "Review [topic] lecture" (revision), set not_before_date = session date, target_date = 1–3 days after
+- exercise → "Work through Exercise [N]: [title]" (exercise), set not_before_date = release date
+- assignment → "Complete Assignment [N]: [title]" (assignment), set deadline = due date
+- quiz/test/testat → "Prepare for [quiz/test]: [topic]" (test), set deadline = quiz date, target_date = 3–5 days before
+- exam → "Prepare for final exam" (test) + "Review key concepts before exam" (revision), set deadline = exam date, exam_date = exam date
+- project_milestone → "Work on [milestone]" (project_work)
+- presentation → "Prepare presentation: [topic]" (project_work), set deadline = presentation date
+
+### Date handling
+- TYPE A (lecture, exercise, lab, session): not_before_date = item date; target_date = 1–3 days after; do NOT set deadline
+- TYPE B (quiz, test, assignment, exam, submission): deadline = item date; target_date = 3–7 days before deadline
+- Always copy week and week_label from the source item to the task
+- Always copy source_line to source_text
+
+### Time estimation
+- Total workload = ${course.credit_points || 5} credit points × 27h adjusted for difficulty (${course.difficulty}) and familiarity (${course.familiarity})
+- Distribute proportionally across all tasks (reading: ~2h, exercise: ~1.5h, revision: ~1h, assignment: ~3h, test prep: ~2h)
+
+### Project/Research courses
+If this is a thesis, seminar, DSR, or project course with no specific chapters, generate these milestones:
+Refine research question → Search literature → Read papers → Outline → Write draft → Revise → Final submission
+
+Return JSON with a "tasks" array. Each task MUST include source_text (the original source_line).`;
+
+      const created = [];
+      try {
+        const pass2Result = await base44.integrations.Core.InvokeLLM({
+          prompt: pass2Prompt,
+          response_json_schema: taskSchema,
+          model: 'claude_sonnet_4_6'
         });
 
-        const extracted = result.tasks || [];
-        const created = [];
-        for (const t of extracted) {
+        const extractedTasks = pass2Result.tasks || [];
+        for (const t of extractedTasks) {
           const record = await base44.entities.StudyTask.create({
             plan_id: planId,
             course_id: course.id,
@@ -312,19 +354,30 @@ Return JSON with a "tasks" array. Each task object:
           });
           created.push(record);
         }
-        newTasks[course.id] = created;
       } catch (e) {
-        console.error(e);
-        newTasks[course.id] = [];
+        console.error('Pass 2 failed for', course.name, e);
       }
+
+      newTasks[course.id] = created;
+      newCoverageStats[course.id].tasksCreated = created.length;
     }
 
     setTasks(newTasks);
+    setCoverageStats(newCoverageStats);
     setExtracted(true);
     setExtracting(false);
+    setExtractingCourse('');
+    setExtractStep('');
   };
 
-  const extractTasks = () => extractTasksForCourses(courses);
+  const handleReExtract = () => {
+    const hasExisting = Object.values(tasks).flat().length > 0;
+    if (hasExisting) {
+      setShowReExtractConfirm(true);
+    } else {
+      extractTasksForCourses(courses, false);
+    }
+  };
 
   const updateTask = async (taskId, updates) => {
     await base44.entities.StudyTask.update(taskId, updates);
@@ -389,8 +442,47 @@ Return JSON with a "tasks" array. Each task object:
           {!extracted && extracting && (
             <div className="bg-white rounded-xl border border-blue-100 p-8 shadow-sm text-center mb-6">
               <Loader2 className="w-10 h-10 animate-spin text-blue-500 mx-auto mb-3" />
-              <p className="text-gray-600 font-medium">Analyzing course materials and extracting tasks with dates...</p>
-              <p className="text-sm text-gray-400 mt-1">Detecting chapters, deadlines, exam dates, and week schedules.</p>
+              {extractingCourse && (
+                <p className="text-xs font-semibold text-blue-500 uppercase tracking-wide mb-1">{extractingCourse}</p>
+              )}
+              {extractStep === 'source_items' && (
+                <>
+                  <p className="text-gray-700 font-medium">Step 1/2 — Enumerating source items...</p>
+                  <p className="text-sm text-gray-400 mt-1">Reading chapters, sessions, exercises, assignments from the material.</p>
+                </>
+              )}
+              {extractStep === 'tasks' && (
+                <>
+                  <p className="text-gray-700 font-medium">Step 2/2 — Generating tasks per source item...</p>
+                  <p className="text-sm text-gray-400 mt-1">Creating one task per chapter, topic, exercise, and deadline.</p>
+                </>
+              )}
+              {!extractStep && (
+                <p className="text-gray-600 font-medium">Starting extraction...</p>
+              )}
+            </div>
+          )}
+
+          {/* Re-extract confirmation dialog */}
+          {showReExtractConfirm && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 mb-6">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="font-semibold text-amber-800 mb-1">Replace existing tasks?</p>
+                  <p className="text-sm text-amber-700 mb-3">
+                    Re-extracting will delete all {Object.values(tasks).flat().length} existing tasks for this plan and create new ones. This cannot be undone.
+                  </p>
+                  <div className="flex gap-2">
+                    <Button size="sm" className="bg-amber-600 hover:bg-amber-700" onClick={() => extractTasksForCourses(courses, true)}>
+                      Yes, delete and re-extract
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setShowReExtractConfirm(false)}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
@@ -415,9 +507,9 @@ Return JSON with a "tasks" array. Each task object:
                     <p className="text-xs text-blue-500">Courses</p>
                   </div>
                 </div>
-                <Button variant="outline" size="sm" onClick={extractTasks} disabled={extracting}>
-                  {extracting ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
-                  Re-extract
+                <Button variant="outline" size="sm" onClick={handleReExtract} disabled={extracting}>
+                  {extracting ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <RefreshCw className="w-4 h-4 mr-1" />}
+                  Re-extract all
                 </Button>
               </div>
 
@@ -435,6 +527,36 @@ Return JSON with a "tasks" array. Each task object:
                   </button>
                 ))}
               </div>
+
+              {/* Coverage stats for active course */}
+              {currentCourse && coverageStats[currentCourse.id] && (() => {
+                const stats = coverageStats[currentCourse.id];
+                const sourceCount = stats.sourceItemCount || 0;
+                const taskCount = stats.tasksCreated || currentTasks.length;
+                const lowCoverage = sourceCount > 3 && taskCount < sourceCount;
+                return (
+                  <div className={`rounded-lg px-4 py-3 mb-4 text-xs ${lowCoverage ? 'bg-amber-50 border border-amber-200' : 'bg-gray-50 border border-gray-100'}`}>
+                    <div className="flex flex-wrap gap-x-5 gap-y-1 items-center">
+                      <span className="font-semibold text-gray-700">Extraction coverage:</span>
+                      {sourceCount > 0 && <span className="text-gray-600">{sourceCount} source items detected</span>}
+                      {stats.chapters > 0 && <span className="text-blue-600">📖 {stats.chapters} chapters</span>}
+                      {stats.topics > 0 && <span className="text-blue-600">📝 {stats.topics} topics</span>}
+                      {stats.sessions > 0 && <span className="text-indigo-600">🎓 {stats.sessions} sessions</span>}
+                      {stats.exercises > 0 && <span className="text-emerald-600">🔢 {stats.exercises} exercises</span>}
+                      {stats.assignments > 0 && <span className="text-orange-600">📋 {stats.assignments} assignments</span>}
+                      {stats.quizzes_tests > 0 && <span className="text-red-600">✏️ {stats.quizzes_tests} quizzes/tests</span>}
+                      {stats.exams > 0 && <span className="text-red-700">📆 {stats.exams} exams</span>}
+                      <span className={`font-semibold ${lowCoverage ? 'text-amber-700' : 'text-gray-700'}`}>→ {taskCount} tasks created</span>
+                    </div>
+                    {lowCoverage && (
+                      <p className="mt-1.5 text-amber-700 flex items-center gap-1">
+                        <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                        {sourceCount} source items were detected, but only {taskCount} tasks were created. Consider re-extracting or adding tasks manually.
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Tasks for active course */}
               <div className="space-y-3 mb-6">
