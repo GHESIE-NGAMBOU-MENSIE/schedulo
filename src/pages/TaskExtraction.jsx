@@ -419,8 +419,8 @@ Return JSON: { "tasks": [ ... ] }`;
                     <p className="text-xs text-blue-500">Total workload</p>
                   </div>
                   <div className="text-center">
-                    <p className="text-2xl font-bold text-emerald-600 hidden">{tasksWithDates}</p>
-                    <p className="text-xs text-emerald-600 hidden">With extracted dates</p>
+                    
+                    
                   </div>
                   <div className="text-center">
                     <p className="text-2xl font-bold text-blue-700">{courses.length}</p>
