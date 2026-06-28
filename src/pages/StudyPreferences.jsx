@@ -90,8 +90,8 @@ export default function StudyPreferences() {
           {/* Progress */}
           <div className="mb-6">
             <div className="flex justify-between text-xs text-gray-500 mb-1">
-              <span className="hidden">Step 2 of 4 — Study Preferences</span>
-              <span className="hidden">{progressValue}% complete</span>
+              
+              
             </div>
             <Progress value={progressValue} className="h-2" />
           </div>
