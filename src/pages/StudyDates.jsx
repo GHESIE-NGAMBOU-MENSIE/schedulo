@@ -334,7 +334,7 @@ export default function StudyDates() {
           {/* Calendar import */}
           <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-6">
             <h3 className="font-semibold text-gray-900 mb-1">Import your calendar</h3>
-            <p className="text-sm text-gray-400 mb-4 hidden">Upload an .ics file from your university or personal calendar. Recurring events will be grouped into one entry.</p>
+            
             <div className="flex flex-wrap gap-3">
               <label className="cursor-pointer">
                 <input type="file" accept=".ics" onChange={handleFileUpload} className="hidden" />
