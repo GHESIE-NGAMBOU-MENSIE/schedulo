@@ -465,7 +465,7 @@ export default function StudyDates() {
           <div className="mb-6">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-semibold text-gray-900">{events.length} detected events</h3>
-                <p className="text-xs text-gray-400 hidden">Click a badge to toggle its type</p>
+                
               </div>
               <div className="space-y-2">
                 {events.map((ev, i) =>
