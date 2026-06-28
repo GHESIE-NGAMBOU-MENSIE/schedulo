@@ -226,7 +226,7 @@ export default function ActivePlan() {
               Show blocked times
             </label>
             <div className="ml-auto flex gap-2">
-              <Link to={`/plan/${planId}/replan`}>
+              <Link to={`/plan/${planId}/replan?week=${weekOffset || 0}`}>
                 <Button variant="outline" size="sm"><MessageCircle className="w-4 h-4 mr-1" /> Re-plan</Button>
               </Link>
               <Link to={`/plan/${planId}/export`}>
