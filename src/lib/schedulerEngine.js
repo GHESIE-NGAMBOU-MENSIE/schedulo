@@ -20,7 +20,9 @@
 
 const JS_DAY_TO_NAME = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-// ─── Lead times by task type (days before deadline to finish prep) ────────────
+// ─── Lead times by task type: preferred prep days before deadline ─────────────
+// These set the PREFERRED preparation date, NOT the hard latest allowed date.
+// latestAllowedDate is always deadline - 1 (one day before the real deadline).
 const LEAD_DAYS = {
   test: 5,
   revision: 5,
@@ -340,7 +342,7 @@ function isFlexibleTask(task) {
 // For project courses: spread evenly across full period, not by chapter rhythm.
 
 function computeTaskSchedulingMeta(task, courseTasks, weeks, courses, startDate) {
-  if (!weeks.length) return { preferredWeekIdx: 0, latestAllowedDate: null, deadlineWeekIdx: -1, reason: 'No weeks' };
+  if (!weeks.length) return { preferredWeekIdx: 0, latestAllowedDate: null, preferredScheduleDate: null, deadlineWeekIdx: -1, reason: 'No weeks' };
 
   const course = courses.find(c => c.id === task.course_id || c.name === task.course_name);
   const isProject = course ? isProjectLikeCourse(course) : false;
@@ -352,16 +354,20 @@ function computeTaskSchedulingMeta(task, courseTasks, weeks, courses, startDate)
   const courseExam = task.exam_date || course?.exam_date;
 
   let deadlineWeekIdx = -1;
-  let latestAllowedDate = null; // hard cap on placement date
+  let latestAllowedDate = null; // hard cap: one day before real deadline
+  let preferredScheduleDate = null; // recommended prep date: deadline - leadDays
 
   if (rawDeadline) {
     deadlineWeekIdx = getWeekIndex(rawDeadline, weeks);
-    // latest_allowed = deadline - lead_days (do NOT place on the deadline day itself unless forced)
-    const latestDate = subtractDays(rawDeadline, leadDays);
+    // preferredScheduleDate = deadline - leadDays (where we WANT to schedule)
+    const prefDate = subtractDays(rawDeadline, leadDays);
+    preferredScheduleDate = prefDate && prefDate >= startDate ? prefDate : rawDeadline;
+    // latestAllowedDate = one day before deadline (hard cap — NOT the preferred date)
+    const latestDate = subtractDays(rawDeadline, 1);
     if (latestDate && latestDate >= startDate) {
       latestAllowedDate = latestDate;
-    } else if (latestDate) {
-      // lead time pushes before study start — allow up to deadline itself
+    } else {
+      // Deadline is at or before study start — allow up to deadline itself
       latestAllowedDate = rawDeadline;
     }
   }
@@ -375,6 +381,7 @@ function computeTaskSchedulingMeta(task, courseTasks, weeks, courses, startDate)
     if (!rawDeadline) {
       const examLatest = subtractDays(courseExam, 7);
       latestAllowedDate = examLatest && examLatest >= startDate ? examLatest : courseExam;
+      preferredScheduleDate = latestAllowedDate;
       deadlineWeekIdx = ew;
     }
   }
@@ -450,6 +457,7 @@ function computeTaskSchedulingMeta(task, courseTasks, weeks, courses, startDate)
     preferredWeekIdx,
     deadlineWeekIdx,
     latestAllowedDate,
+    preferredScheduleDate,
     reason,
     isProject,
   };
@@ -644,6 +652,7 @@ export function scheduleTasksEngine(tasks, calEvents, courses, prefs, startDate,
         assignedWeekIdx: meta.preferredWeekIdx,
         deadlineWeekIdx: meta.deadlineWeekIdx,
         latestAllowedDate: meta.latestAllowedDate,
+        preferredScheduleDate: meta.preferredScheduleDate,
         targetWeekReason: meta.reason,
         allocationReason: meta.reason,
         isProject: meta.isProject,
@@ -722,9 +731,10 @@ export function scheduleTasksEngine(tasks, calEvents, courses, prefs, startDate,
       const notBeforeDate = task.not_before_date ? parseDate(task.not_before_date) : null;
       const preferredEventType = getPreferredEventType(task);
 
-      // latest_allowed_date: hard cap (deadline - lead_days), or null if no deadline
+      // latestAllowedDate: hard cap (one day before deadline). preferredScheduleDate: soft target.
       const latestAllowed = entry.latestAllowedDate || task.deadline || null;
       const latestAllowedDate = latestAllowed ? parseDate(latestAllowed) : null;
+      const preferredSchedDate = entry.preferredScheduleDate ? parseDate(entry.preferredScheduleDate) : null;
 
       // Split tasks > 3h into 3h blocks
       const blockDurations = [];
@@ -738,14 +748,20 @@ export function scheduleTasksEngine(tasks, calEvents, courses, prefs, startDate,
         let placed = null;
         let explanation = '';
 
-        // Helper: check if a day is within date constraints
+        // Helper: day is within the hard constraint (real deadline - 1)
         const dayAllowed = (dateKey) => {
           if (latestAllowedDate && parseDate(dateKey) > latestAllowedDate) return false;
           if (notBeforeDate && parseDate(dateKey) < notBeforeDate) return false;
           return true;
         };
+        // Helper: day is within the preferred preparation window (deadline - leadDays)
+        const dayPreferred = (dateKey) => {
+          if (!dayAllowed(dateKey)) return false;
+          if (preferredSchedDate && parseDate(dateKey) > preferredSchedDate) return false;
+          return true;
+        };
 
-        // ── Step A: After course event anchor in this week ───────────────────
+        // ── Step A: After course event anchor in this week (preferred window) ─
         if (task.course_id && preferredEventType) {
           const weekCourseEvents = (courseEventsByWeek[task.course_id]?.[wi] || [])
             .filter(e => Array.isArray(preferredEventType) ? preferredEventType.includes(e.type) : e.type === preferredEventType)
@@ -779,24 +795,38 @@ export function scheduleTasksEngine(tasks, calEvents, courses, prefs, startDate,
           }
         }
 
-        // ── Step C: Any day in this week within constraints ──────────────────
+        // ── Step C: Any day in preferred window (≤ preferredScheduleDate) ────
         if (!placed) {
           for (const day of weekStudyDays) {
             if (lastPlacedDate && day.dateKey < lastPlacedDate) continue;
-            if (!dayAllowed(day.dateKey)) continue;
+            if (!dayPreferred(day.dateKey)) continue;
             const result = tryPlace(day.dateKey, day.winStart, day.winEnd, day.maxMinutes, day.busyBlocks, getStudyBlocks(day.dateKey), breakDuration, blockDur, null);
             if (result) {
               placed = result;
               explanation = week.label;
-              if (!courseRoutine[courseKey]) {
-                courseRoutine[courseKey] = { dow: day.dow, startMinutes: result.start };
-              }
+              if (!courseRoutine[courseKey]) courseRoutine[courseKey] = { dow: day.dow, startMinutes: result.start };
               break;
             }
           }
         }
 
-        // ── Step D: Overflow to later weeks (still within latest_allowed) ────
+        // ── Step D: Days between preferred window and real latestAllowedDate ──
+        if (!placed) {
+          for (const day of weekStudyDays) {
+            if (lastPlacedDate && day.dateKey < lastPlacedDate) continue;
+            if (!dayAllowed(day.dateKey)) continue;
+            if (dayPreferred(day.dateKey)) continue; // already tried
+            const result = tryPlace(day.dateKey, day.winStart, day.winEnd, day.maxMinutes, day.busyBlocks, getStudyBlocks(day.dateKey), breakDuration, blockDur, null);
+            if (result) {
+              placed = result;
+              explanation = `${week.label} (later than preferred, still before deadline)`;
+              if (!courseRoutine[courseKey]) courseRoutine[courseKey] = { dow: day.dow, startMinutes: result.start };
+              break;
+            }
+          }
+        }
+
+        // ── Step E: Overflow to later weeks within hard latestAllowedDate ────
         if (!placed) {
           for (let owi = wi + 1; owi < weeks.length; owi++) {
             const overflowDays = studyDays.filter(d => d.dateKey >= weeks[owi].startStr && d.dateKey <= weeks[owi].endStr);
@@ -805,11 +835,24 @@ export function scheduleTasksEngine(tasks, calEvents, courses, prefs, startDate,
               const result = tryPlace(day.dateKey, day.winStart, day.winEnd, day.maxMinutes, day.busyBlocks, getStudyBlocks(day.dateKey), breakDuration, blockDur, null);
               if (result) {
                 placed = result;
-                explanation = `Overflow from ${week.label} to ${weeks[owi].label}`;
+                explanation = `Overflow to ${weeks[owi].label} (before deadline)`;
                 break;
               }
             }
             if (placed) break;
+          }
+        }
+
+        // ── Step F: Earlier free days before preferred window ─────────────────
+        if (!placed) {
+          const earlierDays = studyDays.filter(d => d.dateKey < week.startStr && dayAllowed(d.dateKey));
+          for (const day of earlierDays.reverse()) {
+            const result = tryPlace(day.dateKey, day.winStart, day.winEnd, day.maxMinutes, day.busyBlocks, getStudyBlocks(day.dateKey), breakDuration, blockDur, null);
+            if (result) {
+              placed = result;
+              explanation = 'Placed earlier (no later slot before deadline)';
+              break;
+            }
           }
         }
 
@@ -828,11 +871,13 @@ export function scheduleTasksEngine(tasks, calEvents, courses, prefs, startDate,
             allocationReason: entry.allocationReason,
           });
         } else if (bi === 0) {
-          let reason = `No free slot in ${week.label} or later weeks`;
+          const realDeadline = task.deadline || task.exam_date || null;
+          let reason = `No free slot found before deadline`;
           if (!studyDays.length) reason = 'No study days configured';
-          else if (latestAllowedDate && latestAllowedDate < start) reason = `Latest allowed date (${latestAllowed}) is before study period start`;
-          else if (latestAllowedDate) reason = `Could not schedule before latest allowed date (${latestAllowed}) — no free slot found`;
+          else if (latestAllowedDate && latestAllowedDate < start) reason = `Deadline (${realDeadline}) is before study period start`;
+          else if (realDeadline) reason = `No free slot found before deadline (${realDeadline})`;
           else if (maxHoursPerDay < 60) reason = 'Max study hours per day is too low';
+          else reason = `No free slot available in any week`;
           unscheduled.push({ task, reason, allocationReason: entry.allocationReason });
         }
       }
@@ -926,6 +971,7 @@ export function scheduleTasksEngine(tasks, calEvents, courses, prefs, startDate,
       latestAllowedDate: entry.latestAllowedDate || null,
       notBefore: entry.task.not_before_date || null,
       movedFromTarget: sched ? Math.abs((getWeekIndex(sched.dateStr, weeks)) - entry.preferredWeekIdx) : null,
+      scheduledAfterPreferred: sched && entry.preferredScheduleDate && sched.dateStr > entry.preferredScheduleDate,
       scheduledTooLate: sched && entry.latestAllowedDate && sched.dateStr > entry.latestAllowedDate,
       scheduledBeforeNotBefore: sched && entry.task.not_before_date && sched.dateStr < entry.task.not_before_date,
     });
@@ -954,10 +1000,15 @@ export function scheduleTasksEngine(tasks, calEvents, courses, prefs, startDate,
       .filter(([, count]) => total > 2 && count / total > 0.4)
       .map(([name, count]) => ({ name, count, pct: Math.round(count / total * 100) }));
 
-    // Deadline violations: tasks scheduled after their latest_allowed_date
+    // Deadline violations: tasks scheduled after the real hard deadline cap
     const tooLate = weekScheduled.filter(s => {
       const entry = tasksWithMeta.find(e => (e.task.id && e.task.id === s.task.id) || e.task.title === s.task.title);
       return entry?.latestAllowedDate && s.dateStr > entry.latestAllowedDate;
+    });
+    // Tasks scheduled in the window between preferred date and real deadline (warning, not error)
+    const laterThanPreferred = weekScheduled.filter(s => {
+      const entry = tasksWithMeta.find(e => (e.task.id && e.task.id === s.task.id) || e.task.title === s.task.title);
+      return entry?.preferredScheduleDate && s.dateStr > entry.preferredScheduleDate && (!entry.latestAllowedDate || s.dateStr <= entry.latestAllowedDate);
     });
 
     // Tasks moved significantly from their target week
@@ -976,6 +1027,7 @@ export function scheduleTasksEngine(tasks, calEvents, courses, prefs, startDate,
       overloadedCourses,
       unscheduledTasks: unscheduledForWeek.map(u => ({ title: u.task.title, course: u.task.course_name || u.task.course_id, reason: u.reason })),
       tooLateTasks: tooLate.map(s => ({ title: s.task.title, scheduledDate: s.dateStr, latestAllowed: tasksWithMeta.find(e => e.task.title === s.task.title)?.latestAllowedDate })),
+      laterThanPreferredTasks: laterThanPreferred.map(s => ({ title: s.task.title, scheduledDate: s.dateStr, preferredDate: tasksWithMeta.find(e => e.task.title === s.task.title)?.preferredScheduleDate, note: 'Scheduled later than recommended, but still before the deadline.' })),
       farFromTargetTasks: farFromTarget.map(s => ({ title: s.task.title, targetWeek: s.targetWeekIdx + 1, actualWeek: getWeekIndex(s.dateStr, weeks) + 1 })),
     };
   });
