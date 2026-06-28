@@ -330,7 +330,7 @@ export default function CourseOverview() {
           {/* Progress */}
           <div className="mb-6">
             <div className="flex justify-between text-xs text-gray-500 mb-1">
-              <span>Step 3 of 4 — Course Information</span>
+              <span className="hidden">Step 3 of 4 — Course Information</span>
               <span>{completedCount} of {courses.length} courses completed</span>
             </div>
             <Progress value={progressValue} className="h-2" />

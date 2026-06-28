@@ -173,7 +173,7 @@ export default function StudyPreferences() {
             <h3 className="font-semibold text-gray-900 mb-1 flex items-center gap-2">
               <Coffee className="w-4 h-4 text-amber-500" /> Break between study blocks
             </h3>
-            <p className="text-sm text-gray-400 mb-4">How long should breaks be between your study sessions?</p>
+            <p className="text-sm text-gray-400 mb-4 hidden">How long should breaks be between your study sessions?</p>
             <div className="flex items-center gap-4">
               <Slider
                 value={[breakDuration]}
