@@ -11,6 +11,7 @@ import ContextChat from '@/components/schedulo/ContextChat';
 import TaskEditModal from '@/components/schedulo/TaskEditModal';
 import AddTaskModal from '@/components/schedulo/AddTaskModal';
 import { scheduleTasksEngine, buildBusyMapPublic, findConflict, getLocalDateStr } from '@/lib/schedulerEngine';
+import { validateSlot, findAlternativeSlots } from '@/lib/slotValidator';
 import { motion } from 'framer-motion';
 
 function parseDate(str) {
@@ -46,6 +47,7 @@ export default function PlanGeneration() {
   const [editingTask, setEditingTask] = useState(null);
   const [addingToDay, setAddingToDay] = useState(null); // { date, startTime }
   const [dragInfo, setDragInfo] = useState(null); // { taskId, offsetMinutes }
+  const [dragError, setDragError] = useState(null); // { reason, alternatives, task, duration }
   const calGridRef = useRef(null);
 
   useEffect(() => { loadData(); }, [planId]);
@@ -328,23 +330,45 @@ export default function PlanGeneration() {
     const duration = (eh * 60 + em) - (sh * 60 + sm);
     const newStart = Math.max(CAL_START_HOUR * 60, Math.min(dropMin, (CAL_END_HOUR - 1) * 60));
     const newEnd = newStart + duration;
+    const newDate = getLocalDateStr(targetDate);
+    const newStartStr = minutesToTimeStr(newStart);
+    const newEndStr = minutesToTimeStr(newEnd);
 
-    const updatedTask = {
-      ...task,
-      scheduled_date: getLocalDateStr(targetDate),
-      scheduled_start: minutesToTimeStr(newStart),
-      scheduled_end: minutesToTimeStr(newEnd),
-    };
+    // Validate before saving
+    const validation = validateSlot({
+      newDate, newStart: newStartStr, newEnd: newEndStr, task,
+      allTasks: tasks, busyMap: expandedBusyMap, prefs: plan?.preferences || {},
+      planStart: plan?.start_date, planEnd: plan?.end_date,
+    });
+
+    if (!validation.valid) {
+      const alternatives = findAlternativeSlots({
+        newDate, duration, task, allTasks: tasks, busyMap: expandedBusyMap,
+        prefs: plan?.preferences || {}, planStart: plan?.start_date, planEnd: plan?.end_date,
+      });
+      setDragError({ reason: validation.reason, alternatives, task, duration });
+      setDragInfo(null);
+      return;
+    }
+
+    const updatedTask = { ...task, scheduled_date: newDate, scheduled_start: newStartStr, scheduled_end: newEndStr };
     setTasks(prev => prev.map(t => t.id === taskId ? updatedTask : t));
     await base44.entities.StudyTask.update(taskId, {
-      scheduled_date: updatedTask.scheduled_date,
-      scheduled_start: updatedTask.scheduled_start,
-      scheduled_end: updatedTask.scheduled_end,
+      scheduled_date: newDate, scheduled_start: newStartStr, scheduled_end: newEndStr,
     });
     setDragInfo(null);
   };
 
   const handleDragOver = (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; };
+
+  const applyAlternativeSlot = async (task, slot) => {
+    const updatedTask = { ...task, scheduled_date: slot.date, scheduled_start: slot.start, scheduled_end: slot.end };
+    setTasks(prev => prev.map(t => t.id === task.id ? updatedTask : t));
+    await base44.entities.StudyTask.update(task.id, {
+      scheduled_date: slot.date, scheduled_start: slot.start, scheduled_end: slot.end,
+    });
+    setDragError(null);
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
@@ -417,6 +441,41 @@ export default function PlanGeneration() {
                       </ul>
                       <p className="text-xs text-red-600 mt-2">Re-generate to resolve conflicts.</p>
                     </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Drag/edit conflict warning */}
+              {dragError && (
+                <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 mb-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-start gap-2 min-w-0">
+                      <AlertCircle className="w-5 h-5 text-orange-500 mt-0.5 flex-shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-orange-800">Move not possible</p>
+                        <p className="text-xs text-orange-700 mt-0.5">{dragError.reason}</p>
+                        {dragError.alternatives?.length > 0 && (
+                          <div className="mt-2">
+                            <p className="text-xs font-medium text-orange-800 mb-1">Available alternatives:</p>
+                            <div className="flex flex-wrap gap-2">
+                              {dragError.alternatives.map((slot, i) => (
+                                <button
+                                  key={i}
+                                  onClick={() => applyAlternativeSlot(dragError.task, slot)}
+                                  className="text-xs bg-white border border-orange-300 hover:bg-orange-100 text-orange-800 rounded-lg px-3 py-1.5 transition-colors"
+                                >
+                                  {slot.date} · {slot.start}–{slot.end}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {dragError.alternatives?.length === 0 && (
+                          <p className="text-xs text-orange-600 mt-1">No free alternative slots found nearby. Try adjusting your study preferences or extending the study period.</p>
+                        )}
+                      </div>
+                    </div>
+                    <button onClick={() => setDragError(null)} className="flex-shrink-0 text-orange-400 hover:text-orange-600 text-lg leading-none">×</button>
                   </div>
                 </div>
               )}
@@ -810,6 +869,16 @@ export default function PlanGeneration() {
           onClose={() => setEditingTask(null)}
           onSaved={handleTaskSaved}
           onDeleted={handleTaskDeleted}
+          validateSlotFn={(date, start, end) => validateSlot({
+            newDate: date, newStart: start, newEnd: end, task: editingTask,
+            allTasks: tasks, busyMap: expandedBusyMap, prefs: plan?.preferences || {},
+            planStart: plan?.start_date, planEnd: plan?.end_date,
+          })}
+          findSlotsFn={(date, duration) => findAlternativeSlots({
+            newDate: date, duration, task: editingTask, allTasks: tasks,
+            busyMap: expandedBusyMap, prefs: plan?.preferences || {},
+            planStart: plan?.start_date, planEnd: plan?.end_date,
+          })}
         />
       )}
 
