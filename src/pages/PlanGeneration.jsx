@@ -1,13 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
-import { Calendar, List, ArrowLeft, CheckCircle, AlertCircle, Loader2, RotateCcw, Info, ChevronDown, ChevronUp } from 'lucide-react';
+import { Calendar, List, ArrowLeft, CheckCircle, AlertCircle, Loader2, RotateCcw, Info, ChevronDown, ChevronUp, Plus } from 'lucide-react';
 import { PLANNING_REFERENCE_DATE } from '@/lib/planningDate';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import PhaseIndicator from '@/components/schedulo/PhaseIndicator';
 import StepHeader from '@/components/schedulo/StepHeader';
 import ContextChat from '@/components/schedulo/ContextChat';
+import TaskEditModal from '@/components/schedulo/TaskEditModal';
+import AddTaskModal from '@/components/schedulo/AddTaskModal';
 import { scheduleTasksEngine, buildBusyMapPublic, findConflict, getLocalDateStr } from '@/lib/schedulerEngine';
 import { motion } from 'framer-motion';
 
@@ -41,6 +43,10 @@ export default function PlanGeneration() {
   const [generationError, setGenerationError] = useState(null);
   const [expandedBusyMap, setExpandedBusyMap] = useState({});
   const [tooltip, setTooltip] = useState(null); // {task, x, y}
+  const [editingTask, setEditingTask] = useState(null);
+  const [addingToDay, setAddingToDay] = useState(null); // { date, startTime }
+  const [dragInfo, setDragInfo] = useState(null); // { taskId, offsetMinutes }
+  const calGridRef = useRef(null);
 
   useEffect(() => { loadData(); }, [planId]);
 
@@ -262,6 +268,83 @@ export default function PlanGeneration() {
   const getTaskColor = (task) => {
     return courseColorMap[task.course_id] || courseColorMap[task.course_name] || COURSE_COLOR_PALETTE[0];
   };
+
+  // ── Format task title nicely (remove "[title]" placeholder artifacts) ────
+  const formatTaskTitle = (task) => {
+    // Remove literal "[title]", "[topic]", "[chapter title]" placeholders from LLM output
+    return (task.title || '').replace(/\s*:\s*\[.*?\]/g, '').trim();
+  };
+
+  // ── Task edit/add helpers ────────────────────────────────────────────────
+  const handleTaskSaved = (updatedTask) => {
+    setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
+    setEditingTask(null);
+  };
+
+  const handleTaskDeleted = (taskId) => {
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, scheduled_date: null, scheduled_start: null, scheduled_end: null } : t));
+    setEditingTask(null);
+  };
+
+  const handleTaskAdded = (newTask) => {
+    setTasks(prev => [...prev, newTask]);
+    setAddingToDay(null);
+  };
+
+  // ── Drag-and-drop ────────────────────────────────────────────────────────
+  const pxToMinutes = (px) => (px / HOUR_PX) * 60;
+  const minutesToTimeStr = (min) => {
+    const h = Math.floor(min / 60);
+    const m = min % 60;
+    return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+  };
+
+  const handleDragStart = (e, task) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const offsetPx = e.clientY - rect.top;
+    const [sh, sm] = (task.scheduled_start || '09:00').split(':').map(Number);
+    const taskStartMin = sh * 60 + sm;
+    const cursorOffsetMin = Math.round(pxToMinutes(offsetPx) / 15) * 15;
+    setDragInfo({ taskId: task.id, offsetMinutes: cursorOffsetMin, taskStartMin });
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('taskId', task.id);
+    setTooltip(null);
+  };
+
+  const handleDrop = async (e, targetDate) => {
+    e.preventDefault();
+    if (!dragInfo) return;
+    const taskId = e.dataTransfer.getData('taskId');
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) { setDragInfo(null); return; }
+
+    const gridEl = calGridRef.current;
+    if (!gridEl) { setDragInfo(null); return; }
+    const gridRect = gridEl.getBoundingClientRect();
+    const dropPx = e.clientY - gridRect.top;
+    const dropMin = CAL_START_HOUR * 60 + Math.round(pxToMinutes(dropPx) / 15) * 15 - dragInfo.offsetMinutes;
+    const [eh, em] = (task.scheduled_end || '10:00').split(':').map(Number);
+    const [sh, sm] = (task.scheduled_start || '09:00').split(':').map(Number);
+    const duration = (eh * 60 + em) - (sh * 60 + sm);
+    const newStart = Math.max(CAL_START_HOUR * 60, Math.min(dropMin, (CAL_END_HOUR - 1) * 60));
+    const newEnd = newStart + duration;
+
+    const updatedTask = {
+      ...task,
+      scheduled_date: getLocalDateStr(targetDate),
+      scheduled_start: minutesToTimeStr(newStart),
+      scheduled_end: minutesToTimeStr(newEnd),
+    };
+    setTasks(prev => prev.map(t => t.id === taskId ? updatedTask : t));
+    await base44.entities.StudyTask.update(taskId, {
+      scheduled_date: updatedTask.scheduled_date,
+      scheduled_start: updatedTask.scheduled_start,
+      scheduled_end: updatedTask.scheduled_end,
+    });
+    setDragInfo(null);
+  };
+
+  const handleDragOver = (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
@@ -541,15 +624,26 @@ export default function PlanGeneration() {
                     <div className="grid border-b border-gray-100" style={{ gridTemplateColumns: '48px repeat(7, 1fr)' }}>
                       <div className="p-2" />
                       {weekDates.map((d, i) => (
-                        <div key={i} className={`p-2 text-center border-l border-gray-100 ${d.toDateString() === PLANNING_REFERENCE_DATE.toDateString() ? 'bg-blue-50' : ''}`}>
+                        <div key={i} className={`p-2 text-center border-l border-gray-100 group relative ${d.toDateString() === PLANNING_REFERENCE_DATE.toDateString() ? 'bg-blue-50' : ''}`}>
                           <p className="text-xs text-gray-400">{dayNames[i]}</p>
                           <p className={`text-sm font-semibold ${d.toDateString() === PLANNING_REFERENCE_DATE.toDateString() ? 'text-blue-600' : 'text-gray-700'}`}>{d.getDate()}</p>
+                          <button
+                            onClick={() => setAddingToDay({ date: getLocalDateStr(d), startTime: '09:00' })}
+                            className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity w-5 h-5 rounded-full bg-blue-100 hover:bg-blue-200 text-blue-600 flex items-center justify-center"
+                            title="Add task to this day"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
                         </div>
                       ))}
                     </div>
                     {/* Time grid */}
                     <div className="max-h-[580px] overflow-y-auto">
-                      <div className="relative grid" style={{ gridTemplateColumns: '48px repeat(7, 1fr)', height: `${(CAL_END_HOUR - CAL_START_HOUR) * HOUR_PX}px` }}>
+                      <div
+                        ref={calGridRef}
+                        className="relative grid"
+                        style={{ gridTemplateColumns: '48px repeat(7, 1fr)', height: `${(CAL_END_HOUR - CAL_START_HOUR) * HOUR_PX}px` }}
+                      >
                         {/* Hour lines + labels */}
                         {Array.from({ length: CAL_END_HOUR - CAL_START_HOUR }, (_, i) => CAL_START_HOUR + i).map(hour => (
                           <React.Fragment key={hour}>
@@ -571,10 +665,16 @@ export default function PlanGeneration() {
                           const dayEvents = getEventsForDay(d);
                           const colLeft = `calc(48px + ${colIdx} * ((100% - 48px) / 7))`;
                           const colWidth = 'calc((100% - 48px) / 7)';
+                          const dateStr = getLocalDateStr(d);
                           return (
                             <React.Fragment key={colIdx}>
-                              {/* Column border */}
-                              <div className="absolute top-0 bottom-0 border-l border-gray-100 pointer-events-none" style={{ left: colLeft }} />
+                              {/* Drop zone for this column */}
+                              <div
+                                className="absolute top-0 bottom-0 border-l border-gray-100"
+                                style={{ left: colLeft, width: colWidth }}
+                                onDragOver={handleDragOver}
+                                onDrop={e => handleDrop(e, d)}
+                              />
                               {/* Calendar events (fixed commitments) */}
                               {dayEvents.map((ev, j) => {
                                 const top = toTopPx(ev.start_time);
@@ -582,16 +682,15 @@ export default function PlanGeneration() {
                                 return (
                                   <div
                                     key={`ev-${j}`}
-                                    className="absolute z-10 bg-gray-100 border border-gray-300 rounded text-gray-600 overflow-hidden"
+                                    className="absolute z-10 bg-gray-100 border border-gray-300 rounded text-gray-600 overflow-hidden pointer-events-none"
                                     style={{ top, height, left: colLeft, width: colWidth, padding: '2px 4px' }}
-                                    title={ev.name}
                                   >
                                     <p className="text-xs font-medium leading-tight truncate">{ev.name}</p>
                                     <p className="text-xs opacity-70 leading-tight">{ev.start_time}–{ev.end_time}</p>
                                   </div>
                                 );
                               })}
-                              {/* Study tasks */}
+                              {/* Study tasks — draggable */}
                               {dayTasks.map((task, j) => {
                                 const top = toTopPx(task.scheduled_start);
                                 const height = toDurationPx(task.scheduled_start, task.scheduled_end);
@@ -600,15 +699,15 @@ export default function PlanGeneration() {
                                 return (
                                   <div
                                     key={`t-${j}`}
-                                    className={`absolute z-20 rounded border overflow-hidden cursor-pointer ${hasConflict ? 'border-red-500 ring-1 ring-red-400' : `${color.bg} ${color.border}`} ${color.text}`}
+                                    draggable
+                                    onDragStart={e => handleDragStart(e, task)}
+                                    className={`absolute z-20 rounded border overflow-hidden cursor-grab active:cursor-grabbing select-none ${hasConflict ? 'border-red-500 ring-1 ring-red-400' : `${color.bg} ${color.border}`} ${color.text}`}
                                     style={{ top, height, left: colLeft, width: colWidth, padding: '3px 5px', backgroundColor: hasConflict ? '#fee2e2' : undefined }}
-                                    onMouseEnter={(e) => setTooltip({ task, x: e.clientX, y: e.clientY })}
-                                    onMouseLeave={() => setTooltip(null)}
-                                    onClick={(e) => setTooltip(tooltip?.task?.id === task.id ? null : { task, x: e.clientX, y: e.clientY })}
+                                    onClick={() => setEditingTask(task)}
                                   >
                                     {hasConflict && <span className="absolute top-0.5 right-0.5 text-red-500 text-xs">⚠</span>}
                                     <p className="text-xs font-semibold leading-tight truncate">{task.course_name}</p>
-                                    <p className="text-xs leading-tight truncate opacity-80">{task.title}</p>
+                                    <p className="text-xs leading-tight truncate opacity-80">{formatTaskTitle(task)}</p>
                                   </div>
                                 );
                               })}
@@ -630,7 +729,7 @@ export default function PlanGeneration() {
                       <div key={task.id} className={`bg-white rounded-xl border px-4 py-3 shadow-sm flex items-center justify-between gap-3 ${!task.scheduled_date ? 'border-amber-200 opacity-70' : 'border-blue-100'}`}>
                         <div className="flex items-center gap-3 min-w-0">
                           <div className="min-w-0">
-                            <span className="font-semibold text-gray-900 block truncate">{task.title}</span>
+                            <span className="font-semibold text-gray-900 block truncate">{formatTaskTitle(task)}</span>
                             <span className="text-xs text-gray-400">{task.course_name}</span>
                           </div>
                           <span className={`flex-shrink-0 px-2 py-0.5 rounded-full text-xs font-medium border ${getTaskColor(task).bg} ${getTaskColor(task).border} ${getTaskColor(task).text}`}>
@@ -704,13 +803,35 @@ export default function PlanGeneration() {
         </motion.div>
       </div>
 
+      {/* Edit task modal */}
+      {editingTask && (
+        <TaskEditModal
+          task={editingTask}
+          onClose={() => setEditingTask(null)}
+          onSaved={handleTaskSaved}
+          onDeleted={handleTaskDeleted}
+        />
+      )}
+
+      {/* Add task modal */}
+      {addingToDay && (
+        <AddTaskModal
+          planId={planId}
+          courses={courses}
+          defaultDate={addingToDay.date}
+          defaultStart={addingToDay.startTime}
+          onClose={() => setAddingToDay(null)}
+          onSaved={handleTaskAdded}
+        />
+      )}
+
       {/* Task tooltip */}
       {tooltip && (
         <div
           className="fixed z-50 bg-white border border-gray-200 rounded-xl shadow-xl p-4 w-72 pointer-events-none"
           style={{ top: Math.min(tooltip.y + 12, window.innerHeight - 280), left: Math.min(tooltip.x + 12, window.innerWidth - 300) }}
         >
-          <p className="font-semibold text-gray-900 text-sm mb-1">{tooltip.task.title}</p>
+          <p className="font-semibold text-gray-900 text-sm mb-1">{formatTaskTitle(tooltip.task)}</p>
           <div className="space-y-0.5 text-xs text-gray-600">
             <p><span className="font-medium text-gray-700">Course:</span> {tooltip.task.course_name}</p>
             <p><span className="font-medium text-gray-700">Date:</span> {tooltip.task.scheduled_date}</p>
