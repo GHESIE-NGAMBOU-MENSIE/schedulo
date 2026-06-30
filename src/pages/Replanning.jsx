@@ -8,12 +8,13 @@ import StepHeader from '@/components/schedulo/StepHeader';
 import ReactMarkdown from 'react-markdown';
 import { motion } from 'framer-motion';
 import { buildBusyMapPublic, getLocalDateStr } from '@/lib/schedulerEngine';
+import { t } from '@/lib/i18n';
 import { validateSlot, findAlternativeSlots } from '@/lib/slotValidator';
 import { PLANNING_REFERENCE_DATE } from '@/lib/planningDate';
 
 const HOUR_PX = 52;
-const CAL_START_HOUR = 7;
-const CAL_END_HOUR = 21;
+const DEFAULT_CAL_START = 7;
+const DEFAULT_CAL_END = 21;
 const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 // ── MiniCalendar ────────────────────────────────────────────────────────────
@@ -31,6 +32,25 @@ function MiniCalendar({ tasks, expandedBusyMap, showBlockedTimes, weekOffset, se
   };
 
   const weekDates = getWeekDates();
+
+  // Dynamically compute calendar hours from this week's tasks/events
+  const computeCalHours = () => {
+    const times = weekDates.flatMap(d => {
+      const ds = getLocalDateStr(d);
+      const taskTimes = tasks.filter(t => t.scheduled_date === ds)
+        .flatMap(t => [t.scheduled_start, t.scheduled_end].filter(Boolean));
+      const evTimes = (expandedBusyMap[ds] || []).flatMap(e => [e.start_time, e.end_time].filter(Boolean));
+      return [...taskTimes, ...evTimes];
+    });
+    if (times.length === 0) return { CAL_START_HOUR: DEFAULT_CAL_START, CAL_END_HOUR: DEFAULT_CAL_END };
+    const toH = (t) => parseInt(t.substring(0, 2), 10);
+    return {
+      CAL_START_HOUR: Math.max(0, Math.min(...times.map(toH)) - 1),
+      CAL_END_HOUR: Math.min(24, Math.max(...times.map(toH)) + 2),
+    };
+  };
+
+  const { CAL_START_HOUR, CAL_END_HOUR } = computeCalHours();
 
   const toTopPx = (t) => {
     if (!t) return 0;
@@ -681,6 +701,12 @@ IMPORTANT: Include ALL [MUST MOVE] and [MUST FOLLOW] tasks from the SEQUENCE ANA
                 <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-3 flex items-center gap-2">
                   <Bot className="w-5 h-5 text-white" />
                   <span className="text-white font-semibold text-sm">Schedulo Re-planning Assistant</span>
+                </div>
+
+                {/* AI warning */}
+                <div className="px-4 py-2 bg-amber-50 border-b border-amber-100 text-xs text-amber-800 flex items-center gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                  {t('aiWarningReplan')}
                 </div>
 
                 {/* Visible week context pill */}

@@ -268,9 +268,24 @@ export default function StudyDates() {
       step: 2
     });
 
-    // Create courses from detected course events (deduplicated by name)
-    const courseNames = [...new Set(events.filter((e) => e.is_course).map((e) => e.name))];
-    for (const name of courseNames) {
+    // Deduplicate courses semantically before creating them
+    // Strip common suffixes/prefixes (Vorlesung, Lecture, Course, Übung, Exercise, Lab, Tutorial, Seminar)
+    const STRIP_WORDS = /\b(vorlesung|lecture|course|übung|ubung|exercise|lab|praktikum|tutorial|seminar|kurs|class)\b/gi;
+    const normalize = (name) => name.replace(STRIP_WORDS, '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+    const rawCourseNames = events.filter((e) => e.is_course).map((e) => e.name);
+    // Group by normalized key — keep the shortest (cleanest) name as canonical
+    const canonicalMap = new Map(); // normalizedKey -> canonical name
+    for (const name of rawCourseNames) {
+      const key = normalize(name);
+      if (!key) continue;
+      if (!canonicalMap.has(key) || name.length < canonicalMap.get(key).length) {
+        canonicalMap.set(key, name);
+      }
+    }
+    const dedupedNames = [...canonicalMap.values()];
+
+    for (const name of dedupedNames) {
       try {
         const existing = await base44.entities.Course.filter({ plan_id: planId, name });
         if (!existing.length) {

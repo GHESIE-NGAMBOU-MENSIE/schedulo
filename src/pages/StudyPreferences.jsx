@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { t } from '@/lib/i18n';
 import { useParams, useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { Settings, ArrowRight, ArrowLeft, Clock, Coffee, BanIcon } from 'lucide-react';
@@ -153,14 +154,14 @@ export default function StudyPreferences() {
 
           {/* Max hours */}
           <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-6">
-            <h3 className="font-semibold text-gray-900 mb-1">Maximum study hours per day</h3>
+            <h3 className="font-semibold text-gray-900 mb-1">{t('maxHoursLabel')}</h3>
             
             <div className="flex items-center gap-4">
               <Slider
                 value={[maxHours]}
                 onValueChange={(v) => setMaxHours(v[0])}
                 min={1}
-                max={12}
+                max={24}
                 step={1}
                 className="flex-1" />
               
@@ -171,7 +172,7 @@ export default function StudyPreferences() {
           {/* Break duration */}
           <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-6">
             <h3 className="font-semibold text-gray-900 mb-1 flex items-center gap-2">
-              <Coffee className="w-4 h-4 text-amber-500" /> Break between study blocks
+              <Coffee className="w-4 h-4 text-amber-500" /> {t('breakLabel')}
             </h3>
             
             <div className="flex items-center gap-4">
@@ -179,11 +180,15 @@ export default function StudyPreferences() {
                 value={[breakDuration]}
                 onValueChange={(v) => setBreakDuration(v[0])}
                 min={5}
-                max={60}
+                max={1440}
                 step={5}
                 className="flex-1" />
               
-              <span className="text-2xl font-bold text-amber-600 w-20 text-center">{breakDuration}m</span>
+              <span className="text-2xl font-bold text-amber-600 w-24 text-center">
+                {breakDuration >= 60
+                  ? `${Math.floor(breakDuration / 60)}h${breakDuration % 60 > 0 ? ` ${breakDuration % 60}m` : ''}`
+                  : `${breakDuration}m`}
+              </span>
             </div>
           </div>
 

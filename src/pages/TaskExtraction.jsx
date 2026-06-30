@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
-import { ListChecks, ArrowRight, ArrowLeft, Loader2, Edit2, Check, Trash2, Plus, ChevronDown, ChevronUp, Calendar, Clock, AlertTriangle, RefreshCw } from 'lucide-react';
+import { ListChecks, ArrowRight, ArrowLeft, Loader2, Edit2, Check, Trash2, Plus, ChevronDown, ChevronUp, Calendar, Clock, AlertTriangle, RefreshCw, AlertCircle } from 'lucide-react';
+import { t } from '@/lib/i18n';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -129,14 +130,17 @@ export default function TaskExtraction() {
     }
   };
 
+  const [fallbackCourses, setFallbackCourses] = useState(new Set()); // course IDs that used fallback
+
   // Client-side fallback: parse chapter/topic lines from materials_text
+  // Returns ~10 tasks (5 reading + 5 exercise) when no course info given
   const buildFallbackTasks = (course) => {
     const material = course.materials_text || '';
     const lines = material.split('\n').map((l) => l.trim()).filter(Boolean);
     const chapterRe = /^(chapter|ch\.?|topic|week|session|lecture|woche|sitzung|einheit|thema)\s*(\d+)[:\s\-–]*(.*)/i;
     const found = lines.map((l) => l.match(chapterRe)).filter(Boolean);
 
-    if (found.length > 0) {
+    if (found.length >= 3) {
       return found.map((m, i) => ({
         title: `Read ${m[1]} ${m[2]}${m[3] ? ': ' + m[3].trim() : ''}`,
         task_type: 'reading', estimated_hours: 2, priority: 'medium',
@@ -146,13 +150,19 @@ export default function TaskExtraction() {
         date_confidence: 'none'
       }));
     }
-    // Generic fallback
+    // Generic 10-task fallback structure
     return [
-    { title: `Review course materials: ${course.name}`, task_type: 'reading', estimated_hours: 2, priority: 'medium', date_confidence: 'none' },
-    { title: `Read assigned material for ${course.name}`, task_type: 'reading', estimated_hours: 3, priority: 'medium', date_confidence: 'none' },
-    { title: `Practice exercises for ${course.name}`, task_type: 'exercise', estimated_hours: 2, priority: 'medium', date_confidence: 'none' },
-    { title: `Prepare for final assessment: ${course.name}`, task_type: 'test', estimated_hours: 3, priority: 'high', deadline: course.exam_date || null, exam_date: course.exam_date || null, date_confidence: course.exam_date ? 'exact' : 'none' }];
-
+      { title: `Read Chapter 1: Introduction to ${course.name}`, task_type: 'reading', estimated_hours: 2, priority: 'medium', target_week: 1, date_confidence: 'none' },
+      { title: `Read Chapter 2: Core Concepts`, task_type: 'reading', estimated_hours: 2, priority: 'medium', target_week: 2, date_confidence: 'none' },
+      { title: `Read Chapter 3: Advanced Topics`, task_type: 'reading', estimated_hours: 2, priority: 'medium', target_week: 3, date_confidence: 'none' },
+      { title: `Read Chapter 4: Applications`, task_type: 'reading', estimated_hours: 2, priority: 'medium', target_week: 4, date_confidence: 'none' },
+      { title: `Read Chapter 5: Summary and Review`, task_type: 'reading', estimated_hours: 2, priority: 'medium', target_week: 5, date_confidence: 'none' },
+      { title: `Practice exercises – Week 1`, task_type: 'exercise', estimated_hours: 1.5, priority: 'medium', target_week: 1, date_confidence: 'none' },
+      { title: `Practice exercises – Week 2`, task_type: 'exercise', estimated_hours: 1.5, priority: 'medium', target_week: 2, date_confidence: 'none' },
+      { title: `Practice exercises – Week 3`, task_type: 'exercise', estimated_hours: 1.5, priority: 'medium', target_week: 3, date_confidence: 'none' },
+      { title: `Practice exercises – Week 4`, task_type: 'exercise', estimated_hours: 1.5, priority: 'medium', target_week: 4, date_confidence: 'none' },
+      { title: `Prepare for final exam: ${course.name}`, task_type: 'test', estimated_hours: 3, priority: 'high', deadline: course.exam_date || null, exam_date: course.exam_date || null, date_confidence: course.exam_date ? 'exact' : 'none' },
+    ];
   };
 
   const extractTasksForCourses = async (courseList, deleteExisting = false) => {
@@ -255,9 +265,13 @@ Return JSON: { "tasks": [ ... ] }`;
         console.error('Extraction failed for', course.name, e);
       }
 
-      // Fallback: if AI returned nothing, build tasks client-side
+      // Fallback: if AI returned nothing or too few tasks, build tasks client-side
+      const noInfo = !course.materials_text && !course.description;
       if (extractedTasks.length === 0) {
         extractedTasks = buildFallbackTasks(course);
+        if (noInfo) {
+          setFallbackCourses(prev => new Set([...prev, course.id]));
+        }
       }
 
       const created = [];
@@ -408,6 +422,20 @@ Return JSON: { "tasks": [ ... ] }`;
 
           {extracted &&
           <>
+              {/* AI warning */}
+              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
+                <p className="text-xs text-amber-800">{t('aiWarningTasks')}</p>
+              </div>
+
+              {/* Fallback notice per course */}
+              {fallbackCourses.size > 0 && courses.filter(c => fallbackCourses.has(c.id)).map(c => (
+                <div key={c.id} className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 mb-4 flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" />
+                  <p className="text-xs text-blue-800"><strong>{c.name}:</strong> {t('fallbackNotice')}</p>
+                </div>
+              ))}
+
               <div className="bg-blue-50 rounded-xl p-4 mb-6 flex flex-wrap gap-4 items-center justify-between">
                 <div className="flex gap-6">
                   <div className="text-center">

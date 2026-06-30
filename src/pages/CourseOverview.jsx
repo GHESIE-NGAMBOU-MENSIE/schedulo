@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
+import { t } from '@/lib/i18n';
 import { BookOpen, Plus, Trash2, ArrowRight, ArrowLeft, ChevronDown, ChevronUp, GraduationCap, Upload, Loader2, FileText, Sparkles, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -240,7 +241,7 @@ function CourseCard({ course, onDelete, onSave }) {
                 <Textarea
                 value={materialsText}
                 onChange={(e) => setMaterialsText(e.target.value)}
-                placeholder="Describe the course content, assignments, key topics…"
+                placeholder={t('courseDescPlaceholder')}
                 rows={3}
                 className="mt-1 text-sm" />
               
@@ -335,6 +336,14 @@ export default function CourseOverview() {
             </div>
             <Progress value={progressValue} className="h-2" />
           </div>
+
+          {/* AI warning banner */}
+          {courses.length > 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-5 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
+              <p className="text-xs text-amber-800">{t('aiWarningCourses')}</p>
+            </div>
+          )}
 
           {courses.length === 0 &&
           <div className="bg-white rounded-xl border border-blue-100 p-8 text-center mb-6">

@@ -206,8 +206,25 @@ export default function PlanGeneration() {
     : tasks;
 
   const HOUR_PX = 60;
-  const CAL_START_HOUR = 7;
-  const CAL_END_HOUR = 21;
+
+  // Dynamically compute calendar bounds from tasks & events this week
+  const computeCalHours = () => {
+    const weekTaskTimes = weekDates.flatMap(d => {
+      const ds = getLocalDateStr(d);
+      const tTimes = scheduledTasks
+        .filter(t => t.scheduled_date === ds)
+        .flatMap(t => [t.scheduled_start, t.scheduled_end].filter(Boolean));
+      const eTimes = (expandedBusyMap[ds] || []).flatMap(e => [e.start_time, e.end_time].filter(Boolean));
+      return [...tTimes, ...eTimes];
+    });
+    if (weekTaskTimes.length === 0) return { startHour: 7, endHour: 21 };
+    const toH = (t) => parseInt(t.substring(0, 2), 10);
+    const minH = Math.max(0, Math.min(...weekTaskTimes.map(toH)) - 1);
+    const maxH = Math.min(24, Math.max(...weekTaskTimes.map(toH)) + 2);
+    return { startHour: minH, endHour: maxH };
+  };
+
+  const { startHour: CAL_START_HOUR, endHour: CAL_END_HOUR } = computeCalHours();
 
   const toTopPx = (timeStr) => {
     if (!timeStr) return 0;
@@ -380,9 +397,15 @@ export default function PlanGeneration() {
             icon={Calendar}
             title="Your Study Plan"
             description={generated
-              ? "Review your generated study plan. Tasks are placed in real calendar slots based on your schedule."
+              ? "Review and adjust your study plan. Drag and drop tasks, edit times, and delete tasks when needed."
               : "I'll build a context-aware study schedule by placing your tasks into the best available time slots."}
           />
+          {generated && !generating && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
+              <p className="text-xs text-amber-800">This plan was generated automatically. Please review and adjust it — drag tasks to reschedule, click to edit times, or delete tasks you don't need.</p>
+            </div>
+          )}
 
           {/* Generation error */}
           {generationError && (

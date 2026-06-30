@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
-import { Sparkles, Plus, Calendar, Clock, BookOpen, ArrowRight, Trash2, CheckCircle, AlertCircle } from 'lucide-react';
+import { Sparkles, Plus, Calendar, Clock, ArrowRight, Trash2, Globe } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { motion } from 'framer-motion';
+import { t, getLang, setLang, LANGUAGES } from '@/lib/i18n';
 
 export default function Home() {
   const navigate = useNavigate();
@@ -49,11 +50,18 @@ export default function Home() {
     archived: 'bg-gray-100 text-gray-600',
   };
 
+  const [lang, setLangState] = useState(getLang());
+
   const phaseLabels = {
-    setup: 'Planning Setup',
-    courses: 'Course Information',
-    generation: 'Plan Generation',
-    active: 'Active Semester',
+    setup: t('phaseSetup'),
+    courses: t('phaseCourses'),
+    generation: t('phaseGeneration'),
+    active: t('phaseActive'),
+  };
+
+  const handleLangChange = (l) => {
+    setLangState(l);
+    setLang(l);
   };
 
   if (loading) {
@@ -76,12 +84,27 @@ export default function Home() {
               </div>
               <div>
                 <h1 className="text-2xl font-bold font-heading text-gray-900">Schedulo</h1>
-                <p className="text-sm text-gray-400">Your smart semester planner</p>
+                <p className="text-sm text-gray-400">{t('tagline')}</p>
               </div>
             </div>
-            <Button onClick={() => navigate('/onboarding')} className="bg-blue-600 hover:bg-blue-700">
-              <Plus className="w-4 h-4 mr-1" /> New Plan
-            </Button>
+            <div className="flex items-center gap-2">
+              {/* Language selector */}
+              <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg p-1">
+                <Globe className="w-3.5 h-3.5 text-gray-400 ml-1" />
+                {Object.entries(LANGUAGES).map(([code, label]) => (
+                  <button
+                    key={code}
+                    onClick={() => handleLangChange(code)}
+                    className={`px-2.5 py-1 rounded text-xs font-medium transition-all ${lang === code ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <Button onClick={() => navigate('/onboarding')} className="bg-blue-600 hover:bg-blue-700">
+                <Plus className="w-4 h-4 mr-1" /> {t('newPlan')}
+              </Button>
+            </div>
           </div>
 
           {/* Plans */}
@@ -90,15 +113,15 @@ export default function Home() {
               <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
                 <Calendar className="w-8 h-8 text-blue-400" />
               </div>
-              <h2 className="text-xl font-bold text-gray-900 mb-2">No study plans yet</h2>
-              <p className="text-gray-400 mb-6 max-w-sm mx-auto">Create your first study plan and I'll help you organize your semester step by step.</p>
+              <h2 className="text-xl font-bold text-gray-900 mb-2">{t('noPlansYet')}</h2>
+              <p className="text-gray-400 mb-6 max-w-sm mx-auto">{t('noPlansDesc')}</p>
               <Button onClick={() => navigate('/onboarding')} className="bg-blue-600 hover:bg-blue-700">
-                <Plus className="w-4 h-4 mr-1" /> Create your first plan
+                <Plus className="w-4 h-4 mr-1" /> {t('createFirstPlan')}
               </Button>
             </div>
           ) : (
             <div className="space-y-4">
-              <h2 className="text-lg font-semibold text-gray-900">Your Study Plans</h2>
+              <h2 className="text-lg font-semibold text-gray-900">{t('yourPlans')}</h2>
               {plans.map((plan, i) => (
                 <motion.div
                   key={plan.id}
@@ -126,7 +149,7 @@ export default function Home() {
                         </button>
                         <Link to={getPhaseRoute(plan)}>
                           <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
-                            {plan.status === 'active' ? 'View plan' : 'Continue'} <ArrowRight className="w-4 h-4 ml-1" />
+                            {plan.status === 'active' ? t('viewPlan') : t('continue')} <ArrowRight className="w-4 h-4 ml-1" />
                           </Button>
                         </Link>
                       </div>
