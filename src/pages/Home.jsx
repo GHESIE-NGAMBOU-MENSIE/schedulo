@@ -4,7 +4,7 @@ import { base44 } from '@/api/base44Client';
 import { Sparkles, Plus, Calendar, Clock, ArrowRight, Trash2, Globe } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { motion } from 'framer-motion';
-import { t, getLang, setLang, LANGUAGES } from '@/lib/i18n';
+import { t, setLang, useLang, LANGUAGES } from '@/lib/i18n';
 
 export default function Home() {
   const navigate = useNavigate();
@@ -50,7 +50,7 @@ export default function Home() {
     archived: 'bg-gray-100 text-gray-600',
   };
 
-  const [lang, setLangState] = useState(getLang());
+  const lang = useLang(); // re-renders on language change
 
   const phaseLabels = {
     setup: t('phaseSetup'),
@@ -60,7 +60,6 @@ export default function Home() {
   };
 
   const handleLangChange = (l) => {
-    setLangState(l);
     setLang(l);
   };
 

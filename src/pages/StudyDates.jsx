@@ -271,7 +271,7 @@ export default function StudyDates() {
     // Deduplicate courses semantically before creating them
     // Strip common suffixes/prefixes (Vorlesung, Lecture, Course, Übung, Exercise, Lab, Tutorial, Seminar)
     const STRIP_WORDS = /\b(vorlesung|lecture|course|übung|ubung|exercise|lab|praktikum|tutorial|seminar|kurs|class)\b/gi;
-    const normalize = (name) => name.replace(STRIP_WORDS, '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const normalize = (name) => name.replace(STRIP_WORDS, '').replace(/[-_/\\]+/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
 
     const rawCourseNames = events.filter((e) => e.is_course).map((e) => e.name);
     // Group by normalized key — keep the shortest (cleanest) name as canonical
@@ -285,14 +285,22 @@ export default function StudyDates() {
     }
     const dedupedNames = [...canonicalMap.values()];
 
-    for (const name of dedupedNames) {
-      try {
-        const existing = await base44.entities.Course.filter({ plan_id: planId, name });
-        if (!existing.length) {
+    // Delete all existing unconfirmed courses for this plan, then recreate deduped ones.
+    // This prevents stale duplicates from a previous import run.
+    try {
+      const existingCourses = await base44.entities.Course.filter({ plan_id: planId });
+      const unconfirmed = existingCourses.filter((c) => !c.confirmed);
+      for (const c of unconfirmed) await base44.entities.Course.delete(c.id);
+      // Keep confirmed courses — build a set of their normalized names to avoid re-creating them
+      const confirmedKeys = new Set(
+        existingCourses.filter((c) => c.confirmed).map((c) => normalize(c.name))
+      );
+      for (const name of dedupedNames) {
+        if (!confirmedKeys.has(normalize(name))) {
           await base44.entities.Course.create({ plan_id: planId, name, course_type: [], confirmed: false });
         }
-      } catch (e) {}
-    }
+      }
+    } catch (e) {}
     navigate(`/plan/${planId}/preferences`);
   };
 

@@ -1,4 +1,4 @@
-// Simple i18n — language stored in localStorage
+// Simple i18n — language stored in localStorage, reactive via a custom event
 export const LANGUAGES = { en: 'English', de: 'Deutsch' };
 
 export function getLang() {
@@ -7,7 +7,8 @@ export function getLang() {
 
 export function setLang(lang) {
   localStorage.setItem('schedulo_lang', lang);
-  window.location.reload();
+  // Dispatch a custom event so React components can react without a full reload
+  window.dispatchEvent(new CustomEvent('schedulo_lang_change', { detail: lang }));
 }
 
 const T = {
@@ -16,7 +17,7 @@ const T = {
     tagline: 'Your smart semester planner',
     newPlan: 'New Plan',
     noPlansYet: 'No study plans yet',
-    noPlansDesc: 'Create your first study plan and I\'ll help you organize your semester step by step.',
+    noPlansDesc: "Create your first study plan and I'll help you organize your semester step by step.",
     createFirstPlan: 'Create your first plan',
     yourPlans: 'Your Study Plans',
     viewPlan: 'View plan',
@@ -72,3 +73,20 @@ export function t(key) {
   const lang = getLang();
   return T[lang]?.[key] ?? T['en'][key] ?? key;
 }
+
+/**
+ * React hook — returns current lang and re-renders when it changes.
+ * Usage: const lang = useLang();  then use t() as normal.
+ */
+export function useLang() {
+  const [lang, setLangState] = React.useState(getLang());
+  React.useEffect(() => {
+    const handler = (e) => setLangState(e.detail);
+    window.addEventListener('schedulo_lang_change', handler);
+    return () => window.removeEventListener('schedulo_lang_change', handler);
+  }, []);
+  return lang;
+}
+
+// React must be available — import it inline to avoid circular deps
+import React from 'react';
