@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
-import { ListChecks, ArrowRight, ArrowLeft, Loader2, Edit2, Check, Trash2, Plus, ChevronDown, ChevronUp, Calendar, Clock, AlertTriangle, RefreshCw, AlertCircle } from 'lucide-react';
+import { ListChecks, ArrowRight, ArrowLeft, Loader2, Edit2, Check, Trash2, Plus, ChevronDown, ChevronUp, AlertTriangle, RefreshCw, AlertCircle } from 'lucide-react';
 import WorkloadBreakdown from '@/components/schedulo/WorkloadBreakdown';
+import WeeklyTaskList from '@/components/schedulo/WeeklyTaskList';
 import { t } from '@/lib/i18n';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -111,10 +112,12 @@ export default function TaskExtraction() {
   const [newTask, setNewTask] = useState({ title: '', task_type: 'reading', deadline: '', estimated_hours: 2, priority: 'medium' });
   const [confirming, setConfirming] = useState(false);
   const [expandedSource, setExpandedSource] = useState({});
-  const [coverageStats, setCoverageStats] = useState({}); // courseId -> stats
+  const [coverageStats, setCoverageStats] = useState({});
   const [showReExtractConfirm, setShowReExtractConfirm] = useState(false);
-  const [workloadBreakdowns, setWorkloadBreakdowns] = useState({}); // courseId -> breakdown obj
-  const [calendarHoursByCourse, setCalendarHoursByCourse] = useState({}); // courseId -> hours from calendar
+  const [workloadBreakdowns, setWorkloadBreakdowns] = useState({});
+  const [calendarHoursByCourse, setCalendarHoursByCourse] = useState({});
+  const [planStartDate, setPlanStartDate] = useState('');
+  const [addTaskForCourse, setAddTaskForCourse] = useState(null); // courseId
 
   useEffect(() => {loadData();}, [planId]);
 
@@ -125,6 +128,7 @@ export default function TaskExtraction() {
     // Compute calendar attendance hours per course from plan events
     try {
       const plan = await base44.entities.StudyPlan.get(planId);
+      setPlanStartDate(plan.start_date || '');
       const events = plan.calendar_events || [];
       const hours = {};
       courseList.forEach(c => {
@@ -234,9 +238,14 @@ STUDY PERIOD: ${plan.start_date} to ${plan.end_date}
 COURSE: ${course.name}
 TYPE: ${(course.course_type || []).join(', ') || 'lecture'}
 CREDIT POINTS: ${course.credit_points || 5}
-EXAM DATE: ${course.exam_date || 'unknown'}
+EXAM TYPE: ${course.exam_type || 'unknown'}
+EXAM DATE: ${course.exam_date || (course.exam_window_end ? `window: ${course.exam_window_start || '?'} – ${course.exam_window_end}` : 'unknown')}
+COURSE PERIOD: ${course.course_start_date || plan.start_date} to ${course.course_end_date || plan.end_date}
 DIFFICULTY: ${course.difficulty || 'medium'} | FAMILIARITY: ${course.familiarity || 'medium'}
 DESCRIPTION: ${course.description || ''}
+${course.exam_type === 'none' ? 'NOTE: This course has NO exam. Do not create exam preparation tasks.' : ''}
+${course.exam_type === 'window' ? `NOTE: Exact exam date unknown. Plan exam preparation to finish by ${course.exam_window_end}. Mark exam prep tasks as estimated.` : ''}
+${course.exam_type === 'unknown' ? 'NOTE: Exam date unknown. Create provisional exam preparation tasks at the end of the course period. Mark them as estimated.' : ''}
 ${wbText}
 MATERIALS / SYLLABUS:
 ${course.materials_text || '(no materials — use course name and description to create reasonable tasks)'}
@@ -392,17 +401,20 @@ Return JSON: { "tasks": [ ... ] }`;
   };
 
   const addTask = async () => {
-    const course = courses[activeCourse];
+    const courseId = addTaskForCourse || courses[activeCourse]?.id;
+    const course = courses.find(c => c.id === courseId);
     if (!course || !newTask.title.trim()) return;
     const record = await base44.entities.StudyTask.create({
       plan_id: planId, course_id: course.id, course_name: course.name,
       title: newTask.title, task_type: newTask.task_type,
       deadline: newTask.deadline || null, estimated_hours: Number(newTask.estimated_hours) || 2,
-      priority: newTask.priority, status: 'open', confirmed: false, date_confidence: 'none'
+      priority: newTask.priority, status: 'open', confirmed: false, date_confidence: 'none',
+      target_week: newTask.target_week || null,
     });
     setTasks((prev) => ({ ...prev, [course.id]: [...(prev[course.id] || []), record] }));
-    setNewTask({ title: '', task_type: 'reading', deadline: '', estimated_hours: 2, priority: 'medium' });
+    setNewTask({ title: '', task_type: 'reading', deadline: '', estimated_hours: 2, priority: 'medium', target_week: '' });
     setShowAddTask(false);
+    setAddTaskForCourse(null);
   };
 
   const confirmAll = async () => {
@@ -468,39 +480,38 @@ Return JSON: { "tasks": [ ... ] }`;
             </div>
           }
 
-          {extracted &&
-          <>
-              {/* AI warning */}
-              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
-                <p className="text-xs text-amber-800">{t('aiWarningTasks')}</p>
+          {extracted && (
+            <>
+              {/* Guidance banner */}
+              <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 mb-4 flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" />
+                <p className="text-xs text-blue-800">
+                  Tasks were extracted by AI. Please check whether the weekly order, workload, deadlines, and task names make sense. You can edit, delete, or add tasks before continuing.
+                </p>
               </div>
 
               {/* Fallback notice per course */}
               {fallbackCourses.size > 0 && courses.filter(c => fallbackCourses.has(c.id)).map(c => (
-                <div key={c.id} className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 mb-4 flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" />
-                  <p className="text-xs text-blue-800"><strong>{c.name}:</strong> {t('fallbackNotice')}</p>
+                <div key={c.id} className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
+                  <p className="text-xs text-amber-800"><strong>{c.name}:</strong> {t('fallbackNotice')}</p>
                 </div>
               ))}
 
-              <div className="bg-blue-50 rounded-xl p-4 mb-6 flex flex-wrap gap-4 items-center justify-between">
+              {/* Summary bar */}
+              <div className="bg-white border border-blue-100 rounded-xl p-4 mb-5 flex flex-wrap gap-6 items-center justify-between">
                 <div className="flex gap-6">
                   <div className="text-center">
                     <p className="text-2xl font-bold text-blue-700">{Object.values(tasks).flat().length}</p>
-                    <p className="text-xs text-blue-500">Total tasks</p>
+                    <p className="text-xs text-gray-500">Total tasks</p>
                   </div>
                   <div className="text-center">
                     <p className="text-2xl font-bold text-blue-700">{totalHours.toFixed(0)}h</p>
-                    <p className="text-xs text-blue-500">Total workload</p>
-                  </div>
-                  <div className="text-center">
-                    
-                    
+                    <p className="text-xs text-gray-500">Total workload</p>
                   </div>
                   <div className="text-center">
                     <p className="text-2xl font-bold text-blue-700">{courses.length}</p>
-                    <p className="text-xs text-blue-500">Courses</p>
+                    <p className="text-xs text-gray-500">Courses</p>
                   </div>
                 </div>
                 <Button variant="outline" size="sm" onClick={handleReExtract} disabled={extracting}>
@@ -509,148 +520,66 @@ Return JSON: { "tasks": [ ... ] }`;
                 </Button>
               </div>
 
-              {/* Course tabs */}
-              <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
-                {courses.map((c, i) =>
-              <button
-                key={c.id}
-                onClick={() => setActiveCourse(i)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
-                activeCourse === i ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-gray-500 hover:bg-gray-50 border border-gray-200'}`
-                }>
-                
-                    {c.name} ({(tasks[c.id] || []).length})
-                  </button>
-              )}
+              {/* Workload breakdowns — one per course, collapsible */}
+              <div className="mb-5 space-y-2">
+                {courses.map(c => (
+                  <WorkloadBreakdown
+                    key={c.id}
+                    course={c}
+                    calendarHours={calendarHoursByCourse[c.id] || 0}
+                    onBreakdownChange={(bd) =>
+                      setWorkloadBreakdowns(prev => ({ ...prev, [c.id]: bd }))
+                    }
+                  />
+                ))}
               </div>
 
-              {/* Workload breakdown for active course */}
-              {currentCourse && (
-                <WorkloadBreakdown
-                  key={currentCourse.id}
-                  course={currentCourse}
-                  calendarHours={calendarHoursByCourse[currentCourse.id] || 0}
-                  onBreakdownChange={(bd) =>
-                    setWorkloadBreakdowns(prev => ({ ...prev, [currentCourse.id]: bd }))
-                  }
-                />
+              {/* Weekly task list */}
+              <WeeklyTaskList
+                tasks={tasks}
+                courses={courses}
+                editTask={editTask}
+                setEditTask={setEditTask}
+                onSave={updateTask}
+                onDelete={deleteTask}
+                setTasks={setTasks}
+                onAddTask={(courseId) => { setAddTaskForCourse(courseId); setShowAddTask(true); }}
+                planStartDate={planStartDate}
+              />
+
+              {/* Add task form (global, triggered from weekly list) */}
+              {showAddTask && (
+                <div className="mt-4 bg-white rounded-xl border border-blue-200 p-4 shadow-sm space-y-3">
+                  <p className="text-sm font-semibold text-gray-700">
+                    Add task{addTaskForCourse ? ` — ${courses.find(c => c.id === addTaskForCourse)?.name}` : ''}
+                  </p>
+                  <Input value={newTask.title} onChange={e => setNewTask(p => ({ ...p, title: e.target.value }))} placeholder="Task title" />
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <Select value={newTask.task_type} onValueChange={v => setNewTask(p => ({ ...p, task_type: v }))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>{TASK_TYPES.map(tt => <SelectItem key={tt} value={tt}>{tt.replace('_', ' ')}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <Input type="number" value={newTask.estimated_hours} onChange={e => setNewTask(p => ({ ...p, estimated_hours: e.target.value }))} placeholder="Hours" />
+                    <Input type="number" value={newTask.target_week} onChange={e => setNewTask(p => ({ ...p, target_week: e.target.value }))} placeholder="Week #" />
+                    <Input type="date" value={newTask.deadline} onChange={e => setNewTask(p => ({ ...p, deadline: e.target.value }))} />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={addTask} disabled={!newTask.title.trim()}><Plus className="w-4 h-4 mr-1" /> Add</Button>
+                    <Button size="sm" variant="ghost" onClick={() => { setShowAddTask(false); setAddTaskForCourse(null); }}>Cancel</Button>
+                  </div>
+                </div>
               )}
 
-              {/* Coverage stats for active course */}
-              {currentCourse && (() => {
-              const taskCount = currentTasks.length;
-              const withDates = currentTasks.filter((t) => t.target_date || t.target_week || t.deadline).length;
-              const lowCount = taskCount > 0 && taskCount < 3;
-              return (
-                <div className={`rounded-lg px-4 py-3 mb-4 text-xs flex flex-wrap gap-x-5 gap-y-1 items-center ${lowCount ? 'bg-amber-50 border border-amber-200' : 'bg-gray-50 border border-gray-100'}`}>
-                    <span className="font-semibold text-gray-700">Coverage:</span>
-                    <span className={`font-semibold ${lowCount ? 'text-amber-700' : 'text-gray-700'}`}>{taskCount} tasks created</span>
-                    
-                    {lowCount &&
-                  <span className="text-amber-700 flex items-center gap-1">
-                        <AlertTriangle className="w-3 h-3" /> Fewer than 3 tasks — add more manually or re-extract.
-                      </span>
-                  }
-                  </div>);
-
-            })()}
-
-              {/* Tasks for active course */}
-              <div className="space-y-3 mb-6">
-                {currentTasks.map((task, i) =>
-              <motion.div
-                key={task.id}
-                initial={{ opacity: 0, y: 5 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.03 }}
-                className="bg-white rounded-xl border border-blue-100 p-4 shadow-sm">
-                
-                    {editTask === task.id ?
-                <TaskEditForm
-                  task={task}
-                  courseId={currentCourse.id}
-                  onSave={updateTask}
-                  onCancel={() => setEditTask(null)}
-                  setTasks={setTasks} /> :
-
-
-                <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1 flex-wrap">
-                            <h4 className="font-medium text-gray-900">{task.title}</h4>
-                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                      task.priority === 'high' ? 'bg-red-100 text-red-700' :
-                      task.priority === 'medium' ? 'bg-amber-100 text-amber-700' :
-                      'bg-green-100 text-green-700'}`
-                      }>{task.priority}</span>
-                            {task.date_confidence === 'exact' &&
-                      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">📅 exact date</span>
-                      }
-                            {task.date_confidence === 'estimated' &&
-                      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">~ estimated</span>
-                      }
-                          </div>
-                          <div className="flex flex-wrap gap-2 text-xs text-gray-400">
-                            <span className="bg-gray-100 px-2 py-0.5 rounded">{task.task_type?.replace('_', ' ')}</span>
-                            <span>⏱ {task.estimated_hours}h</span>
-                            {task.deadline && <span className="text-red-500">📅 Due: {task.deadline}</span>}
-                            {task.suggested_phase && <span>📍 {task.suggested_phase}</span>}
-                          </div>
-                          <TaskTemporalBadges task={task} />
-                          {task.source_text &&
-                    <button
-                      onClick={() => setExpandedSource((p) => ({ ...p, [task.id]: !p[task.id] }))}
-                      className="mt-1.5 flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600">
-                      
-                              {expandedSource[task.id] ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                              Source text
-                            </button>
-                    }
-                          {expandedSource[task.id] && task.source_text &&
-                    <p className="mt-1 text-xs text-gray-500 italic border-l-2 border-gray-200 pl-2">"{task.source_text}"</p>
-                    }
-                        </div>
-                        <div className="flex gap-1 flex-shrink-0">
-                          <button onClick={() => setEditTask(task.id)} className="p-1.5 hover:bg-gray-100 rounded-lg"><Edit2 className="w-3.5 h-3.5 text-gray-400" /></button>
-                          <button onClick={() => deleteTask(task.id)} className="p-1.5 hover:bg-red-50 rounded-lg"><Trash2 className="w-3.5 h-3.5 text-red-400" /></button>
-                        </div>
-                      </div>
-                }
-                  </motion.div>
+              {!showAddTask && (
+                <button
+                  onClick={() => { setAddTaskForCourse(null); setShowAddTask(true); }}
+                  className="w-full mt-4 py-3 border border-dashed border-blue-200 rounded-xl text-sm text-blue-500 hover:bg-blue-50 transition-colors"
+                >
+                  <Plus className="w-4 h-4 inline mr-1" /> Add task manually
+                </button>
               )}
 
-                {showAddTask ?
-              <div className="bg-white rounded-xl border border-blue-200 p-4 shadow-sm space-y-3">
-                    <Input value={newTask.title} onChange={(e) => setNewTask((p) => ({ ...p, title: e.target.value }))} placeholder="Task title" />
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                      <Select value={newTask.task_type} onValueChange={(v) => setNewTask((p) => ({ ...p, task_type: v }))}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>{TASK_TYPES.map((tt) => <SelectItem key={tt} value={tt}>{tt.replace('_', ' ')}</SelectItem>)}</SelectContent>
-                      </Select>
-                      <Input type="number" value={newTask.estimated_hours} onChange={(e) => setNewTask((p) => ({ ...p, estimated_hours: e.target.value }))} placeholder="Hours" />
-                      <Input type="date" value={newTask.deadline} onChange={(e) => setNewTask((p) => ({ ...p, deadline: e.target.value }))} />
-                      <Select value={newTask.priority} onValueChange={(v) => setNewTask((p) => ({ ...p, priority: v }))}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="low">Low</SelectItem>
-                          <SelectItem value="medium">Medium</SelectItem>
-                          <SelectItem value="high">High</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button size="sm" onClick={addTask} disabled={!newTask.title.trim()}><Plus className="w-4 h-4 mr-1" /> Add</Button>
-                      <Button size="sm" variant="ghost" onClick={() => setShowAddTask(false)}>Cancel</Button>
-                    </div>
-                  </div> :
-
-              <button onClick={() => setShowAddTask(true)} className="w-full py-3 border border-dashed border-blue-200 rounded-xl text-sm text-blue-500 hover:bg-blue-50 transition-colors">
-                    <Plus className="w-4 h-4 inline mr-1" /> Add task manually
-                  </button>
-              }
-              </div>
-
-              <div className="flex justify-between items-center">
+              <div className="flex justify-between items-center mt-6">
                 <Button variant="ghost" onClick={() => navigate(`/plan/${planId}/courses`)}>
                   <ArrowLeft className="w-4 h-4 mr-1" /> Back
                 </Button>
@@ -659,7 +588,7 @@ Return JSON: { "tasks": [ ... ] }`;
                 </Button>
               </div>
             </>
-          }
+          )}
         </motion.div>
       </div>
       <ContextChat phase="tasks" planId={planId} suggestions={[

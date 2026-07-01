@@ -21,6 +21,33 @@
       "type": "string",
       "format": "date"
     },
+    "exam_type": {
+      "type": "string",
+      "enum": [
+        "exact",
+        "window",
+        "submission",
+        "none",
+        "unknown"
+      ],
+      "default": "unknown"
+    },
+    "exam_window_start": {
+      "type": "string",
+      "format": "date"
+    },
+    "exam_window_end": {
+      "type": "string",
+      "format": "date"
+    },
+    "course_start_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "course_end_date": {
+      "type": "string",
+      "format": "date"
+    },
     "description": {
       "type": "string"
     },
