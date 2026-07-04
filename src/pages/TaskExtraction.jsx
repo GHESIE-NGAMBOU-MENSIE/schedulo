@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { ListChecks, ArrowRight, ArrowLeft, Loader2, Edit2, Check, Trash2, Plus, ChevronDown, ChevronUp, Calendar, Clock, AlertTriangle, RefreshCw, AlertCircle } from 'lucide-react';
-import WorkloadBreakdown from '@/components/schedulo/WorkloadBreakdown';
 import { t } from '@/lib/i18n';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -113,44 +112,12 @@ export default function TaskExtraction() {
   const [expandedSource, setExpandedSource] = useState({});
   const [coverageStats, setCoverageStats] = useState({}); // courseId -> stats
   const [showReExtractConfirm, setShowReExtractConfirm] = useState(false);
-  const [workloadBreakdowns, setWorkloadBreakdowns] = useState({}); // courseId -> breakdown obj
-  const [calendarHoursByCourse, setCalendarHoursByCourse] = useState({}); // courseId -> hours from calendar
 
   useEffect(() => {loadData();}, [planId]);
 
   const loadData = async () => {
     const courseList = await base44.entities.Course.filter({ plan_id: planId });
     setCourses(courseList);
-
-    // Compute calendar attendance hours per course from plan events
-    try {
-      const plan = await base44.entities.StudyPlan.get(planId);
-      const events = plan.calendar_events || [];
-      const hours = {};
-      courseList.forEach(c => {
-        const courseLower = c.name.toLowerCase().replace(/\b(vorlesung|lecture|course|übung|exercise|lab|seminar)\b/gi, '').trim();
-        const matching = events.filter(e => {
-          const eLower = (e.name || '').toLowerCase();
-          return eLower.includes(courseLower) || courseLower.includes(eLower.split(' ')[0]);
-        });
-        // Each event is weekly during study period — estimate hours
-        const weekCount = plan.start_date && plan.end_date
-          ? Math.ceil((new Date(plan.end_date) - new Date(plan.start_date)) / (7 * 86400000))
-          : 14;
-        const hoursPerEvent = matching.map(e => {
-          if (e.start_time && e.end_time) {
-            const [sh, sm] = e.start_time.split(':').map(Number);
-            const [eh, em] = e.end_time.split(':').map(Number);
-            return ((eh * 60 + em) - (sh * 60 + sm)) / 60;
-          }
-          return 1.5; // assume 90min if no time given
-        });
-        const totalPerWeek = hoursPerEvent.reduce((s, h) => s + h, 0);
-        hours[c.id] = Math.round(totalPerWeek * weekCount * 10) / 10;
-      });
-      setCalendarHoursByCourse(hours);
-    } catch (e) {}
-
     const existingTasks = await base44.entities.StudyTask.filter({ plan_id: planId });
     if (existingTasks.length > 0) {
       const grouped = {};
@@ -212,20 +179,6 @@ export default function TaskExtraction() {
     for (const course of courseList) {
       setExtractingCourse(course.name);
 
-      const wb = workloadBreakdowns[course.id];
-      const wbText = wb
-        ? `WORKLOAD BUDGET (student-approved hours per category):
-- Course attendance / lectures: ${wb.attendance}h
-- Work through course material: ${wb.material}h
-- Exercises / practice: ${wb.exercises}h
-- Assignments / submissions: ${wb.assignments}h
-- Exam preparation: ${wb.exam_prep}h
-- Revision / buffer: ${wb.revision}h
-Total: ${Object.values(wb).reduce((s, v) => s + v, 0)}h
-
-When generating tasks, respect these budgets. For each category, split the hours into multiple small tasks (never one vague task like "prepare for exam — 20h"). Example: exam_prep 20h → Review Ch.1 (2h), Review Ch.2 (2h), Practice questions (3h), Summary sheet (3h), Final revision (2h), etc.`
-        : '';
-
       const prompt = `You are a study task extractor. Read the course material below and create one concrete study task for EVERY chapter, topic, weekly session, exercise, assignment, quiz, test, or exam you find.
 
 TODAY: ${new Date().toISOString().slice(0, 10)}
@@ -237,7 +190,6 @@ CREDIT POINTS: ${course.credit_points || 5}
 EXAM DATE: ${course.exam_date || 'unknown'}
 DIFFICULTY: ${course.difficulty || 'medium'} | FAMILIARITY: ${course.familiarity || 'medium'}
 DESCRIPTION: ${course.description || ''}
-${wbText}
 MATERIALS / SYLLABUS:
 ${course.materials_text || '(no materials — use course name and description to create reasonable tasks)'}
 
@@ -523,18 +475,6 @@ Return JSON: { "tasks": [ ... ] }`;
                   </button>
               )}
               </div>
-
-              {/* Workload breakdown for active course */}
-              {currentCourse && (
-                <WorkloadBreakdown
-                  key={currentCourse.id}
-                  course={currentCourse}
-                  calendarHours={calendarHoursByCourse[currentCourse.id] || 0}
-                  onBreakdownChange={(bd) =>
-                    setWorkloadBreakdowns(prev => ({ ...prev, [currentCourse.id]: bd }))
-                  }
-                />
-              )}
 
               {/* Coverage stats for active course */}
               {currentCourse && (() => {
