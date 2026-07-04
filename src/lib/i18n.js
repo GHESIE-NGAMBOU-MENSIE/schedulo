@@ -1,3 +1,5 @@
+import React from 'react';
+
 // Simple i18n — language stored in localStorage, reactive via a custom event
 export const LANGUAGES = { en: 'English', de: 'Deutsch' };
 
@@ -87,6 +89,3 @@ export function useLang() {
   }, []);
   return lang;
 }
-
-// React must be available — import it inline to avoid circular deps
-import React from 'react';
