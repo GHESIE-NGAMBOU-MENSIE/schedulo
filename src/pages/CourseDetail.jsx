@@ -23,11 +23,6 @@ export default function CourseDetail() {
   const [selectedTypes, setSelectedTypes] = useState([]);
   const [credits, setCredits] = useState('');
   const [examDate, setExamDate] = useState('');
-  const [examType, setExamType] = useState('unknown'); // 'exact' | 'window' | 'none' | 'submission'
-  const [examWindowStart, setExamWindowStart] = useState('');
-  const [examWindowEnd, setExamWindowEnd] = useState('');
-  const [courseStartDate, setCourseStartDate] = useState('');
-  const [courseEndDate, setCourseEndDate] = useState('');
   const [description, setDescription] = useState('');
   const [difficulty, setDifficulty] = useState('medium');
   const [familiarity, setFamiliarity] = useState('medium');
@@ -44,18 +39,6 @@ export default function CourseDetail() {
       setSelectedTypes(c.course_type || []);
       setCredits(c.credit_points?.toString() || '');
       setExamDate(c.exam_date || '');
-      // Derive examType from saved data
-      if (c.exam_type) {
-        setExamType(c.exam_type);
-      } else if (c.exam_date) {
-        setExamType('exact');
-      } else {
-        setExamType('unknown');
-      }
-      setExamWindowStart(c.exam_window_start || '');
-      setExamWindowEnd(c.exam_window_end || '');
-      setCourseStartDate(c.course_start_date || '');
-      setCourseEndDate(c.course_end_date || '');
       setDescription(c.description || '');
       setDifficulty(c.difficulty || 'medium');
       setFamiliarity(c.familiarity || 'medium');
@@ -90,12 +73,7 @@ export default function CourseDetail() {
     await base44.entities.Course.update(courseId, {
       course_type: selectedTypes,
       credit_points: credits ? Number(credits) : null,
-      exam_date: examType === 'exact' ? (examDate || null) : examType === 'submission' ? (examDate || null) : null,
-      exam_type: examType,
-      exam_window_start: examType === 'window' ? (examWindowStart || null) : null,
-      exam_window_end: examType === 'window' ? (examWindowEnd || null) : null,
-      course_start_date: courseStartDate || null,
-      course_end_date: courseEndDate || null,
+      exam_date: examDate || null,
       description,
       difficulty,
       familiarity,
@@ -181,68 +159,10 @@ export default function CourseDetail() {
                 <Label className="text-sm text-gray-600">Credit points</Label>
                 <Input type="number" value={credits} onChange={e => setCredits(e.target.value)} placeholder="e.g., 5" className="mt-1" />
               </div>
-
-              {/* Exam / final assessment */}
-              <div className="sm:col-span-2">
-                <Label className="text-sm text-gray-600 block mb-1">Final assessment</Label>
-                <div className="flex flex-wrap gap-2 mb-3">
-                  {[
-                    { key: 'exact', label: 'Exact exam date' },
-                    { key: 'window', label: 'Exam period (approx.)' },
-                    { key: 'submission', label: 'Assignment / submission' },
-                    { key: 'none', label: 'No exam' },
-                    { key: 'unknown', label: 'Not known yet' },
-                  ].map(opt => (
-                    <button
-                      key={opt.key}
-                      type="button"
-                      onClick={() => setExamType(opt.key)}
-                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${examType === opt.key ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-                {(examType === 'exact' || examType === 'submission') && (
-                  <div>
-                    <Label className="text-xs text-gray-500">{examType === 'submission' ? 'Submission deadline' : 'Exam date'}</Label>
-                    <Input type="date" value={examDate} onChange={e => setExamDate(e.target.value)} className="mt-1" />
-                  </div>
-                )}
-                {examType === 'window' && (
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label className="text-xs text-gray-500">Earliest possible date</Label>
-                      <Input type="date" value={examWindowStart} onChange={e => setExamWindowStart(e.target.value)} className="mt-1" />
-                    </div>
-                    <div>
-                      <Label className="text-xs text-gray-500">Latest possible date</Label>
-                      <Input type="date" value={examWindowEnd} onChange={e => setExamWindowEnd(e.target.value)} className="mt-1" />
-                    </div>
-                    <p className="col-span-2 text-xs text-amber-600">
-                      ⚠ Provisional — exam prep will be planned towards the end of this window. Update when you know the exact date.
-                    </p>
-                  </div>
-                )}
-                {examType === 'none' && (
-                  <p className="text-xs text-gray-400">No exam preparation tasks will be created for this course.</p>
-                )}
-                {examType === 'unknown' && (
-                  <p className="text-xs text-amber-600">⚠ No exam date provided. A provisional exam preparation phase will be created at the end of the semester. Please update when you know the date.</p>
-                )}
-              </div>
-
-              {/* Course-specific dates */}
               <div>
-                <Label className="text-sm text-gray-600">Course start date <span className="text-gray-400 font-normal">(optional)</span></Label>
-                <Input type="date" value={courseStartDate} onChange={e => setCourseStartDate(e.target.value)} className="mt-1" />
-                <p className="text-xs text-gray-400 mt-1">Leave blank to use the plan start date.</p>
+                <Label className="text-sm text-gray-600">Exam date (if known)</Label>
+                <Input type="date" value={examDate} onChange={e => setExamDate(e.target.value)} className="mt-1" />
               </div>
-              <div>
-                <Label className="text-sm text-gray-600">Course end date <span className="text-gray-400 font-normal">(optional)</span></Label>
-                <Input type="date" value={courseEndDate} onChange={e => setCourseEndDate(e.target.value)} className="mt-1" />
-              </div>
-
               <div>
                 <Label className="text-sm text-gray-600">Perceived difficulty</Label>
                 <Select value={difficulty} onValueChange={setDifficulty}>
