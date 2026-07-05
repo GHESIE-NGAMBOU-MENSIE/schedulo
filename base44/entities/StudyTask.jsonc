@@ -87,6 +87,10 @@
     "target_week": {
       "type": "number"
     },
+    "task_order": {
+      "type": "number",
+      "description": "Sequential order within the course reflecting correct study sequence"
+    },
     "source_week_label": {
       "type": "string"
     },

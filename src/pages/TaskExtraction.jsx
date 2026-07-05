@@ -51,37 +51,81 @@ function buildPrompt(course, plan, selfStudyBudget, calHours, workloadBreakdown)
     ? Object.entries(workloadBreakdown).map(([k, v]) => `  - ${k}: ${v}h`).join('\n')
     : `  - Self-study tasks: ~${Math.round(selfStudyBudget)}h`;
 
+  // Compute rough course week count for phasing instructions
+  const courseStart = course.course_start_date || plan.start_date;
+  const courseEnd = course.course_end_date || plan.end_date;
+  const courseWeeks = (courseStart && courseEnd)
+    ? Math.max(4, Math.ceil((new Date(courseEnd) - new Date(courseStart)) / (7 * 86400000)))
+    : 14;
+  const examPrepStartWeek = Math.max(1, Math.round(courseWeeks * 0.65));
+  const finalRevWeek = Math.max(examPrepStartWeek + 1, courseWeeks - 1);
+
+  const numChapters = course.num_chapters || null;
+  const numExercises = course.num_exercises || null;
+  const numAssignments = course.num_assignments || null;
+  const numQuizzes = course.num_quizzes || null;
+  const contentInfo = [
+    numChapters ? `CHAPTERS/TOPICS: ${numChapters}` : null,
+    numExercises ? `EXERCISE SHEETS: ${numExercises}` : null,
+    numAssignments ? `ASSIGNMENTS: ${numAssignments}` : null,
+    numQuizzes ? `QUIZZES/TESTATE: ${numQuizzes}` : null,
+  ].filter(Boolean).join('\n');
+
   const thesisRules = isThesis ? `
 ## THESIS / RESEARCH PROJECT RULES
-Generate milestones ONLY from this list (in order):
-1. Topic clarification / refine research question (2-4h)
-2. Literature search (2-4h per round)
-3. Read and annotate papers (2-3h each)
-4. Methodology / design decisions (3-4h)
-5. Implementation or artifact development (if relevant, 3-6h per step)
-6. Evaluation / experiment setup (if relevant, 3-4h)
-7. Write thesis chapter: [chapter name] (3-5h each)
-8. Revision and proofreading (2-4h per round)
-9. Supervision meeting preparation (1-2h each)
-10. Buffer (2-4h)
-DO NOT create lecture reading, exercise, or exam prep tasks.` : '';
+Generate milestones ONLY from this list (in chronological order):
+1. Topic clarification / refine research question (2-4h) → target_week=1
+2. Literature search (2-4h per round) → target_week=2
+3. Read and annotate papers (2-3h each) → early weeks
+4. Methodology / design decisions (3-4h) → middle weeks
+5. Implementation / artifact development milestones (3-6h each) → middle weeks
+6. Evaluation / experiment setup (3-4h) → later weeks
+7. Write thesis chapter: [name from materials or "Introduction/Related Work/Methodology/Results/Conclusion"] (3-5h each) → later weeks
+8. Revision and proofreading (2-4h per round) → final weeks
+9. Supervision meeting preparation (1-2h each) → spread across
+10. Buffer — final corrections (2h) → last week
+DO NOT create lecture reading, exercise, or final_exam prep tasks.` : '';
 
   const projectRules = isProject ? `
 ## PROJECT COURSE RULES
-Generate milestones ONLY:
-1. Project planning / requirements (2-4h)
-2. Research / background (2-3h)
-3. Implementation steps (3-5h each, name them specifically)
-4. Testing / validation (2-3h)
-5. Documentation (2-4h)
-6. Presentation preparation (2-3h)
-7. Buffer (1-2h)
+Generate milestones in chronological order:
+1. Project planning / requirements (2-4h) → target_week=1 or 2
+2. Background research (2-3h) → target_week=2 or 3
+3. Implementation milestones (3-5h each) → weeks 3 through ${Math.round(courseWeeks * 0.7)}
+4. Testing / validation (2-3h) → week ${Math.round(courseWeeks * 0.8)}
+5. Documentation (2-4h) → week ${Math.round(courseWeeks * 0.85)}
+6. Presentation preparation (2-3h) → week ${courseWeeks - 1}
+7. Buffer (1-2h) → last week
 DO NOT create lecture reading or exam prep tasks unless explicitly in the structure.` : '';
+
+  const lecturePhasing = (!isThesis && !isProject) ? `
+## CHRONOLOGICAL PHASING — CRITICAL
+The course has approximately ${courseWeeks} weeks (Week 1 to Week ${courseWeeks}).
+Assign tasks to weeks STRICTLY following this order:
+
+PHASE 1 — Content weeks (Week 1 to Week ${examPrepStartWeek - 1}):
+  - Lecture review tasks → spread week by week (Week 1, Week 2, ... Week ${examPrepStartWeek - 1})
+  - Chapter reading tasks → one per chapter, in order (Chapter 1 → Week 1, Chapter 2 → Week 2, etc.)
+  - Exercise sheets → after the corresponding chapter week (Exercise 1 → Week 1 or 2, etc.)
+  - Assignments → before their deadline
+  - Quiz/Testat preparation → 1-2 weeks BEFORE the quiz/Testat date (NOT in Week 1 unless the quiz is in Week 2)
+
+PHASE 2 — Exam preparation (Week ${examPrepStartWeek} to Week ${finalRevWeek}):
+  - ONLY place exam prep tasks here (task_type="test", titles like "Review chapters 1-N", "Practice past papers")
+  - NEVER place exam prep in Phase 1
+  - If exam_date is known, place exam prep tasks ending 3-5 days before it
+
+PHASE 3 — Final revision (Week ${finalRevWeek} to Week ${courseWeeks}):
+  - Final revision and buffer tasks only
+
+ABSOLUTE RULE: Do NOT place "Prepare for final exam" or any exam prep task before Week ${examPrepStartWeek}.
+ABSOLUTE RULE: Weeks 1-${Math.max(1, examPrepStartWeek - 1)} must ONLY contain content tasks (reading, exercises, assignments).` : '';
 
   return `You are a study task extractor. Extract concrete, actionable study tasks for this course.
 
 TODAY: ${new Date().toISOString().slice(0, 10)}
 STUDY PERIOD: ${plan.start_date} to ${plan.end_date}
+COURSE PERIOD: ${courseStart} to ${courseEnd} (${courseWeeks} weeks total)
 
 COURSE: ${course.name}
 CREDIT POINTS: ${course.credit_points || 5} CP = ${(course.credit_points || 5) * 30}h total workload
@@ -89,40 +133,40 @@ CALENDAR ATTENDANCE: ${Math.round(calHours)}h (already counted — do NOT create
 SELF-STUDY BUDGET: ~${Math.round(selfStudyBudget)}h to distribute across tasks
 EXAM TYPE: ${course.exam_type || 'unknown'}
 EXAM DATE: ${course.exam_date || (course.exam_window_end ? `window: ${course.exam_window_start || '?'}–${course.exam_window_end}` : 'unknown')}
-COURSE PERIOD: ${course.course_start_date || plan.start_date} to ${course.course_end_date || plan.end_date}
 DIFFICULTY: ${course.difficulty || 'medium'} | FAMILIARITY: ${course.familiarity || 'medium'}
 DESCRIPTION: ${course.description || 'none'}
 
+${contentInfo ? `COURSE CONTENT COUNTS:\n${contentInfo}\n` : ''}
 ${structureDesc}
 
-WORKLOAD BUDGET PER CATEGORY (respect these — tasks in each category should sum to approx these hours):
+WORKLOAD BUDGET PER CATEGORY (tasks in each category should sum to approx these hours):
 ${wbLines}
 The sum of ALL task hours should be approximately ${Math.round(selfStudyBudget)}h.
 
 COURSE MATERIALS / SYLLABUS:
-${course.materials_text || '(none provided — generate reasonable tasks based on course name, type, and structure)'}
+${course.materials_text || '(none provided — use neutral generic titles like "Work through Chapter N", "Review lecture Week N", "Solve Exercise Sheet N". DO NOT invent topic names like "Graph Theory" or "Machine Learning" unless the course name or description explicitly mentions them.)'}
 ${course.material_files?.length > 0 ? `UPLOADED FILES: ${course.material_files.join(', ')}` : ''}
+${lecturePhasing}
 ${thesisRules}
 ${projectRules}
 
-## EXTRACTION RULES
+## TASK CREATION RULES
+1. CHAPTERS → task_type="reading", title="Work through Chapter N" (add ": [Title]" ONLY if the materials explicitly name it), max 2-3h each, chapter_number=N
+2. LECTURE REVIEW → task_type="reading", title="Review lecture Week N" or "Review lecture content", 1-2h each
+3. EXERCISE SHEETS → task_type="exercise", title="Solve Exercise Sheet N", exercise_number=N, placed after the corresponding chapter week
+4. ASSIGNMENTS → task_type="assignment", title="Complete Assignment N", deadline=due date if known, target_date=5-7 days before deadline, assignment_number=N
+5. QUIZ/TESTAT PREP → task_type="test", title="Prepare for Quiz N" or "Prepare for Testat N", deadline=quiz date if known, target_date=3-5 days before. Place in the week BEFORE the quiz, NOT in Week 1 if quiz is later.
+6. EXAM PREP → task_type="test", titles like "Review all chapters", "Practice past exam questions", "Final revision". ONLY in Phase 2/3 weeks (Week ${examPrepStartWeek}+).
+7. REVISION/BUFFER → task_type="revision", placed in final weeks only.
 
-1. CHAPTERS / READING SECTIONS → task_type="reading", title="Work through Chapter N: [title]", max 3h per task
-2. LECTURE TOPICS → task_type="revision", title="Review: [topic]", 1-2h each
-3. EXERCISE SHEETS → task_type="exercise", title="Work through Exercise N: [topic]", exercise_number=N
-4. ASSIGNMENTS → task_type="assignment", title="Complete Assignment N: [topic]", deadline=due date, target_date=5-7 days before
-5. QUIZZES / TESTATE → task_type="test", title="Prepare for quiz: [topic]" or "Prepare for Testat N", deadline=quiz date, target_date=3-5 days before. Also create 1h task for the quiz duration itself.
-6. FINAL EXAM → task_type="test", title="Prepare for final exam: [topic]", exam_date=exam date. Split into multiple sub-tasks (e.g. "Review Chapter 1", "Practice past papers").
-7. THESIS/PROJECT milestones → task_type="project_work", specific milestone names
-
-## RULES
-- Max 3h per individual task. Split large blocks into sub-tasks.
-- Never use vague titles like "Study for exam (20h)".
-- Total task hours ≈ ${Math.round(selfStudyBudget)}h.
-- Only generate tasks for elements in the confirmed course structure.
+## QUALITY RULES
+- Max 3h per task. Split larger blocks.
+- Do NOT invent chapter/topic names not present in the materials. Use neutral titles.
+- If no detailed materials: use generic but honest titles ("Work through Chapter 1", "Review lecture Week 2").
+- Tasks must be returned in chronological order (smallest target_week first).
 - Use "" for missing dates (not null).
-- For "Week N" references: set target_week=N.
-- source_text: the exact line from materials this task came from, or "".
+- source_text: exact quote from materials if available, else "".
+- task_order: assign sequential integers starting at 1, reflecting the correct study sequence within the course.
 
 Return JSON: { "tasks": [ ... ] }`;
 }
@@ -205,6 +249,7 @@ export default function TaskExtraction() {
   const [fallbackCourses, setFallbackCourses] = useState(new Set());
   const [showReExtractConfirm, setShowReExtractConfirm] = useState(false);
   const [plan, setPlan] = useState(null);
+  const [selectedCourseId, setSelectedCourseId] = useState(null);
 
   useEffect(() => { loadData(); }, [planId]);
 
@@ -247,6 +292,7 @@ export default function TaskExtraction() {
       existingTasks.forEach(t => { if (grouped[t.course_id] !== undefined) grouped[t.course_id].push(t); });
       setTasks(grouped);
       setExtracted(true);
+      if (courseList.length > 0) setSelectedCourseId(courseList[0].id);
     } else {
       extractAllCourses(courseList, p, calHours, false);
     }
@@ -284,6 +330,7 @@ export default function TaskExtraction() {
               target_date: { type: "string" },
               not_before_date: { type: "string" },
               target_week: { type: "number" },
+              task_order: { type: "number" },
               source_week_label: { type: "string" },
               related_course_event_date: { type: "string" },
               related_course_event_type: { type: "string" },
@@ -343,6 +390,7 @@ export default function TaskExtraction() {
         target_date: toNull(t.target_date),
         not_before_date: toNull(t.not_before_date),
         target_week: t.target_week || null,
+        task_order: t.task_order || null,
         source_week_label: t.source_week_label || null,
         related_course_event_date: toNull(t.related_course_event_date),
         related_course_event_type: t.related_course_event_type || null,
@@ -378,6 +426,7 @@ export default function TaskExtraction() {
     setFallbackCourses(newFallbacks);
     setExtracted(true);
     setExtracting(false);
+    if (courseList.length > 0) setSelectedCourseId(courseList[0].id);
   };
 
   const handleReExtractCourse = async (courseId) => {
@@ -514,8 +563,38 @@ export default function TaskExtraction() {
                 </p>
               </div>
 
-              {/* Per-course sections */}
-              {courses.map(course => (
+              {/* Course tabs */}
+              {courses.length > 1 && (
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {courses.map(course => {
+                    const ct = tasks[course.id] || [];
+                    const isActive = selectedCourseId === course.id;
+                    const isFb = fallbackCourses.has(course.id);
+                    const isExtr = extractingCourseId === course.id;
+                    return (
+                      <button
+                        key={course.id}
+                        onClick={() => setSelectedCourseId(course.id)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${
+                          isActive
+                            ? 'bg-blue-600 text-white border-blue-600 shadow'
+                            : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300 hover:text-blue-700'
+                        }`}
+                      >
+                        {isExtr && <Loader2 className="w-3 h-3 animate-spin" />}
+                        {isFb && !isExtr && <AlertTriangle className="w-3 h-3 text-amber-400" />}
+                        <span>{course.name}</span>
+                        <span className={`text-xs ${isActive ? 'text-blue-200' : 'text-gray-400'}`}>
+                          {ct.length}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Selected course section */}
+              {courses.filter(c => courses.length === 1 || c.id === selectedCourseId).map(course => (
                 <CourseTaskSection
                   key={course.id}
                   course={course}

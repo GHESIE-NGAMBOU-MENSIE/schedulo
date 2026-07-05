@@ -142,12 +142,29 @@ export default function CourseTaskSection({
   const totalHours = cp * 30;
   const taskHoursSum = courseTasks.reduce((s, t) => s + (t.estimated_hours || 0), 0);
 
-  // Group tasks by week
+  // Type ordering: content first, then assessments, then exam prep / revision last
+  const TYPE_ORDER = { reading: 0, exercise: 1, assignment: 2, test: 3, project_work: 4, revision: 5 };
+
+  // Group tasks by week, sorted within each week by task_order then type
   const weekMap = {};
   courseTasks.forEach(task => {
     const w = getWeek(task, planStartDate);
     if (!weekMap[w]) weekMap[w] = [];
     weekMap[w].push(task);
+  });
+  Object.keys(weekMap).forEach(w => {
+    weekMap[w].sort((a, b) => {
+      // Primary: explicit task_order from LLM
+      if (a.task_order != null && b.task_order != null) return a.task_order - b.task_order;
+      if (a.task_order != null) return -1;
+      if (b.task_order != null) return 1;
+      // Secondary: chapter/exercise number
+      const aNum = a.chapter_number || a.exercise_number || a.assignment_number || 999;
+      const bNum = b.chapter_number || b.exercise_number || b.assignment_number || 999;
+      if (aNum !== bNum) return aNum - bNum;
+      // Tertiary: type priority
+      return (TYPE_ORDER[a.task_type] ?? 4) - (TYPE_ORDER[b.task_type] ?? 4);
+    });
   });
   const weeks = Object.keys(weekMap).map(Number).sort((a, b) => a - b);
 
