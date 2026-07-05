@@ -12,14 +12,15 @@
       "type": "array",
       "items": {
         "type": "string"
-      }
+      },
+      "description": "Single-element array with one of: lecture_course, lecture_exercises, seminar, project_course, lab_course, bachelor_thesis, master_thesis, other"
     },
     "course_structure": {
       "type": "array",
       "items": {
         "type": "string"
       },
-      "description": "Student-confirmed structural elements: lectures, exercises, assignments, quizzes, testate, final_exam, oral_exam, project_work, lab_work, seminar_presentation, paper_essay, thesis_writing, supervision_meetings, literature_work, implementation, revision_buffer"
+      "description": "Student-confirmed structural elements: lectures, exercises, lab_work, supervision_meetings, assignments, quizzes, testate, seminar_presentation, paper_essay, project_work, implementation, thesis_writing, literature_work, final_exam, oral_exam, revision_buffer"
     },
     "credit_points": {
       "type": "number"
@@ -106,6 +107,22 @@
     "time_adjustment_factor": {
       "type": "number",
       "default": 1.0
+    },
+    "num_chapters": {
+      "type": "number",
+      "description": "Number of chapters or weekly topics"
+    },
+    "num_exercises": {
+      "type": "number",
+      "description": "Number of exercise sheets"
+    },
+    "num_assignments": {
+      "type": "number",
+      "description": "Number of assignments / submissions"
+    },
+    "num_quizzes": {
+      "type": "number",
+      "description": "Number of quizzes or Testate"
     }
   },
   "required": [

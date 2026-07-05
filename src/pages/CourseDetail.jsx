@@ -12,44 +12,54 @@ import StepHeader from '@/components/schedulo/StepHeader';
 import ContextChat from '@/components/schedulo/ContextChat';
 import { motion } from 'framer-motion';
 
-const COURSE_TYPES = ['lecture', 'seminar', 'exercise', 'project', 'lab', 'tutorial', 'workshop', 'thesis', 'bachelor_thesis', 'master_thesis'];
-
-const STRUCTURE_ELEMENTS = [
-  { key: 'lectures',               label: '📚 Lectures',                group: 'Fixed events' },
-  { key: 'exercises',              label: '✏️ Exercises / tutorials',    group: 'Fixed events' },
-  { key: 'lab_work',               label: '🔬 Lab work',                 group: 'Fixed events' },
-  { key: 'supervision_meetings',   label: '🤝 Supervision meetings',     group: 'Fixed events' },
-  { key: 'assignments',            label: '📝 Assignments',              group: 'Submissions' },
-  { key: 'quizzes',                label: '📊 Quizzes',                  group: 'Submissions' },
-  { key: 'testate',                label: '✅ Testate',                  group: 'Submissions' },
-  { key: 'seminar_presentation',   label: '🎤 Seminar / presentation',   group: 'Submissions' },
-  { key: 'paper_essay',            label: '📄 Paper / essay',            group: 'Submissions' },
-  { key: 'project_work',           label: '🛠 Project work',             group: 'Project' },
-  { key: 'implementation',         label: '💻 Implementation / dev',     group: 'Project' },
-  { key: 'thesis_writing',         label: '📖 Thesis writing',           group: 'Thesis' },
-  { key: 'literature_work',        label: '🔍 Literature / research',    group: 'Thesis' },
-  { key: 'final_exam',             label: '🎓 Final exam',               group: 'Assessment' },
-  { key: 'oral_exam',              label: '🗣 Oral exam',               group: 'Assessment' },
-  { key: 'revision_buffer',        label: '🔄 Revision / buffer',        group: 'Other' },
+const COURSE_TYPES = [
+  { key: 'lecture_course',     label: 'Lecture course' },
+  { key: 'lecture_exercises',  label: 'Lecture with exercises' },
+  { key: 'seminar',            label: 'Seminar' },
+  { key: 'project_course',     label: 'Project course' },
+  { key: 'lab_course',         label: 'Lab course' },
+  { key: 'bachelor_thesis',    label: 'Bachelor Thesis' },
+  { key: 'master_thesis',      label: 'Master Thesis' },
+  { key: 'other',              label: 'Other' },
 ];
 
-const STRUCTURE_GROUPS = ['Fixed events', 'Submissions', 'Project', 'Thesis', 'Assessment', 'Other'];
+const STRUCTURE_ELEMENTS = [
+  { key: 'lectures',             label: 'Lectures',                group: 'Attendance' },
+  { key: 'exercises',            label: 'Exercises / tutorials',   group: 'Attendance' },
+  { key: 'lab_work',             label: 'Lab work',                group: 'Attendance' },
+  { key: 'supervision_meetings', label: 'Supervision meetings',    group: 'Attendance' },
+  { key: 'assignments',          label: 'Assignments / submissions', group: 'Submissions' },
+  { key: 'quizzes',              label: 'Quizzes',                 group: 'Submissions' },
+  { key: 'testate',              label: 'Tests / Testate',         group: 'Submissions' },
+  { key: 'seminar_presentation', label: 'Presentation',            group: 'Submissions' },
+  { key: 'paper_essay',          label: 'Paper / essay',           group: 'Submissions' },
+  { key: 'project_work',         label: 'Project work',            group: 'Project / Thesis' },
+  { key: 'implementation',       label: 'Implementation / dev',    group: 'Project / Thesis' },
+  { key: 'thesis_writing',       label: 'Thesis writing',          group: 'Project / Thesis' },
+  { key: 'literature_work',      label: 'Literature / research',   group: 'Project / Thesis' },
+  { key: 'final_exam',           label: 'Final exam',              group: 'Assessment' },
+  { key: 'oral_exam',            label: 'Oral exam',               group: 'Assessment' },
+  { key: 'revision_buffer',      label: 'Revision / buffer',       group: 'Other' },
+];
 
-/** Suggest course structure from course type + name */
-function suggestStructure(courseTypes, courseName) {
-  const types = (courseTypes || []).map(t => t.toLowerCase());
-  const name = (courseName || '').toLowerCase();
-  const isThesis = types.some(t => /thesis|bachelor|master/.test(t)) || /thesis|bachelor|master|bachelorarbeit|masterarbeit/.test(name);
-  const isProject = !isThesis && (types.some(t => /project/.test(t)) || /projekt/.test(name));
-  const isSeminar = types.some(t => /seminar/.test(t));
-  const isLab = types.some(t => /lab|praktikum/.test(t));
+const STRUCTURE_GROUPS = ['Attendance', 'Submissions', 'Project / Thesis', 'Assessment', 'Other'];
 
-  if (isThesis) return ['supervision_meetings', 'literature_work', 'thesis_writing', 'implementation', 'revision_buffer'];
-  if (isProject) return ['project_work', 'implementation', 'seminar_presentation', 'revision_buffer'];
-  if (isSeminar) return ['lectures', 'seminar_presentation', 'paper_essay', 'revision_buffer'];
-  if (isLab) return ['lectures', 'exercises', 'lab_work', 'final_exam', 'revision_buffer'];
-  // Default lecture course
-  return ['lectures', 'exercises', 'assignments', 'final_exam', 'revision_buffer'];
+function suggestStructure(courseTypeKey) {
+  switch (courseTypeKey) {
+    case 'bachelor_thesis':
+    case 'master_thesis':
+      return ['supervision_meetings', 'literature_work', 'thesis_writing', 'implementation', 'revision_buffer'];
+    case 'project_course':
+      return ['project_work', 'implementation', 'seminar_presentation', 'revision_buffer'];
+    case 'seminar':
+      return ['lectures', 'seminar_presentation', 'paper_essay', 'revision_buffer'];
+    case 'lab_course':
+      return ['lectures', 'lab_work', 'testate', 'final_exam', 'revision_buffer'];
+    case 'lecture_exercises':
+      return ['lectures', 'exercises', 'assignments', 'final_exam', 'revision_buffer'];
+    default:
+      return ['lectures', 'assignments', 'final_exam', 'revision_buffer'];
+  }
 }
 
 export default function CourseDetail() {
@@ -57,7 +67,7 @@ export default function CourseDetail() {
   const navigate = useNavigate();
   const [course, setCourse] = useState(null);
   const [allCourses, setAllCourses] = useState([]);
-  const [selectedTypes, setSelectedTypes] = useState([]);
+  const [selectedType, setSelectedType] = useState('');
   const [credits, setCredits] = useState('');
   const [examDate, setExamDate] = useState('');
   const [examType, setExamType] = useState('unknown'); // 'exact' | 'window' | 'none' | 'submission'
@@ -74,13 +84,16 @@ export default function CourseDetail() {
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [courseStructure, setCourseStructure] = useState([]);
-  const [structureSuggested, setStructureSuggested] = useState(false);
+  const [numChapters, setNumChapters] = useState('');
+  const [numExercises, setNumExercises] = useState('');
+  const [numAssignments, setNumAssignments] = useState('');
+  const [numQuizzes, setNumQuizzes] = useState('');
 
   useEffect(() => {
     const load = async () => {
       const c = await base44.entities.Course.get(courseId);
       setCourse(c);
-      setSelectedTypes(c.course_type || []);
+      setSelectedType(c.course_type?.[0] || '');
       setCredits(c.credit_points?.toString() || '');
       setExamDate(c.exam_date || '');
       // Derive examType from saved data
@@ -101,14 +114,14 @@ export default function CourseDetail() {
       setPriority(c.priority || 'medium');
       setMaterialsText(c.materials_text || '');
       setFiles(c.material_files || []);
-      // Course structure — use saved or suggest from type
+      setNumChapters(c.num_chapters?.toString() || '');
+      setNumExercises(c.num_exercises?.toString() || '');
+      setNumAssignments(c.num_assignments?.toString() || '');
+      setNumQuizzes(c.num_quizzes?.toString() || '');
       if (c.course_structure && c.course_structure.length > 0) {
         setCourseStructure(c.course_structure);
-        setStructureSuggested(true);
       } else {
-        const suggested = suggestStructure(c.course_type, c.name);
-        setCourseStructure(suggested);
-        setStructureSuggested(false);
+        setCourseStructure(suggestStructure(c.course_type?.[0] || ''));
       }
       const all = await base44.entities.Course.filter({ plan_id: planId });
       setAllCourses(all);
@@ -117,18 +130,15 @@ export default function CourseDetail() {
     load();
   }, [courseId, planId]);
 
-  const toggleType = (type) => {
-    setSelectedTypes(prev => prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]);
+  const handleTypeChange = (key) => {
+    setSelectedType(key);
+    if (!course?.course_structure?.length) {
+      setCourseStructure(suggestStructure(key));
+    }
   };
 
   const toggleStructure = (key) => {
     setCourseStructure(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
-    setStructureSuggested(true);
-  };
-
-  const applySuggestion = () => {
-    const suggested = suggestStructure(selectedTypes, course?.name);
-    setCourseStructure(suggested);
   };
 
   const handleFileUpload = async (e) => {
@@ -146,8 +156,12 @@ export default function CourseDetail() {
 
   const saveCourse = async () => {
     await base44.entities.Course.update(courseId, {
-      course_type: selectedTypes,
+      course_type: selectedType ? [selectedType] : [],
       course_structure: courseStructure,
+      num_chapters: numChapters ? Number(numChapters) : null,
+      num_exercises: numExercises ? Number(numExercises) : null,
+      num_assignments: numAssignments ? Number(numAssignments) : null,
+      num_quizzes: numQuizzes ? Number(numQuizzes) : null,
       credit_points: credits ? Number(credits) : null,
       exam_date: examType === 'exact' ? (examDate || null) : examType === 'submission' ? (examDate || null) : null,
       exam_type: examType,
@@ -217,17 +231,17 @@ export default function CourseDetail() {
           {/* Course type */}
           <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-4">
             <h3 className="font-semibold text-gray-900 mb-1">Course type</h3>
-            <p className="text-sm text-gray-400 mb-3">Select one or more types that apply.</p>
+            <p className="text-sm text-gray-400 mb-3">Select the general kind of course.</p>
             <div className="flex flex-wrap gap-2">
-              {COURSE_TYPES.map(type => (
+              {COURSE_TYPES.map(ct => (
                 <button
-                  key={type}
-                  onClick={() => toggleType(type)}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                    selectedTypes.includes(type) ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  key={ct.key}
+                  onClick={() => handleTypeChange(ct.key)}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all border ${
+                    selectedType === ct.key ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-100 text-gray-500 border-transparent hover:bg-gray-200'
                   }`}
                 >
-                  {type.charAt(0).toUpperCase() + type.slice(1)}
+                  {ct.label}
                 </button>
               ))}
             </div>
@@ -237,19 +251,17 @@ export default function CourseDetail() {
           <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-4">
             <div className="flex items-start justify-between mb-1">
               <div>
-                <h3 className="font-semibold text-gray-900">Course structure</h3>
-                <p className="text-sm text-gray-400 mb-3">
-                  {structureSuggested
-                    ? 'Confirm or adjust what this course actually contains. This drives the workload categories.'
-                    : 'We suggested a structure based on the course type — please confirm or change it.'}
-                </p>
+                <h3 className="font-semibold text-gray-900">Course structure / workload elements</h3>
+                <p className="text-sm text-gray-400 mb-3">Select everything that applies — only selected elements appear in the workload breakdown.</p>
               </div>
-              <button
-                onClick={applySuggestion}
-                className="text-xs text-blue-500 hover:text-blue-700 whitespace-nowrap ml-4 mt-1"
-              >
-                Reset to suggestion
-              </button>
+              {selectedType && (
+                <button
+                  onClick={() => setCourseStructure(suggestStructure(selectedType))}
+                  className="text-xs text-blue-500 hover:text-blue-700 whitespace-nowrap ml-4 mt-1"
+                >
+                  Reset to suggestion
+                </button>
+              )}
             </div>
             {STRUCTURE_GROUPS.map(group => {
               const items = STRUCTURE_ELEMENTS.filter(e => e.group === group);
@@ -278,6 +290,40 @@ export default function CourseDetail() {
               <p className="text-xs text-amber-600 mt-1">⚠ No structure selected. Please select at least one element so workload categories can be created.</p>
             )}
           </div>
+
+          {/* Course content counts */}
+          {(courseStructure.includes('lectures') || courseStructure.includes('exercises') || courseStructure.includes('assignments') || courseStructure.includes('quizzes') || courseStructure.includes('testate')) && (
+            <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-4">
+              <h3 className="font-semibold text-gray-900 mb-1">Course content</h3>
+              <p className="text-sm text-gray-400 mb-3">Optional — helps generate more accurate tasks.</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {courseStructure.includes('lectures') && (
+                  <div>
+                    <Label className="text-sm text-gray-600">Chapters / topics</Label>
+                    <Input type="number" min={0} value={numChapters} onChange={e => setNumChapters(e.target.value)} placeholder="e.g. 12" className="mt-1" />
+                  </div>
+                )}
+                {courseStructure.includes('exercises') && (
+                  <div>
+                    <Label className="text-sm text-gray-600">Exercise sheets</Label>
+                    <Input type="number" min={0} value={numExercises} onChange={e => setNumExercises(e.target.value)} placeholder="e.g. 10" className="mt-1" />
+                  </div>
+                )}
+                {courseStructure.includes('assignments') && (
+                  <div>
+                    <Label className="text-sm text-gray-600">Assignments</Label>
+                    <Input type="number" min={0} value={numAssignments} onChange={e => setNumAssignments(e.target.value)} placeholder="e.g. 3" className="mt-1" />
+                  </div>
+                )}
+                {(courseStructure.includes('quizzes') || courseStructure.includes('testate')) && (
+                  <div>
+                    <Label className="text-sm text-gray-600">Quizzes / Testate</Label>
+                    <Input type="number" min={0} value={numQuizzes} onChange={e => setNumQuizzes(e.target.value)} placeholder="e.g. 5" className="mt-1" />
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Details grid */}
           <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-4">
