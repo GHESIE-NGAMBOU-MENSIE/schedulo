@@ -216,19 +216,25 @@ export default function TaskExtraction() {
     for (const course of courseList) {
       setExtractingCourse(course.name);
 
+      // CP-based workload budget
+      const cp = course.credit_points || 5;
+      const cpTotalHours = cp * 30;
+      // Subtract calendar attendance hours
+      const calHours = calendarHoursByCourse[course.id] || 0;
+      const selfStudyBudget = Math.max(cpTotalHours - calHours, cpTotalHours * 0.6);
+
       const wb = workloadBreakdowns[course.id];
       const wbText = wb
         ? `WORKLOAD BUDGET (student-approved hours per category):
-- Course attendance / lectures: ${wb.attendance}h
-- Work through course material: ${wb.material}h
-- Exercises / practice: ${wb.exercises}h
-- Assignments / submissions: ${wb.assignments}h
-- Exam preparation: ${wb.exam_prep}h
-- Revision / buffer: ${wb.revision}h
+${Object.entries(wb).map(([k, v]) => `- ${k}: ${v}h`).join('\n')}
 Total: ${Object.values(wb).reduce((s, v) => s + v, 0)}h
 
-When generating tasks, respect these budgets. For each category, split the hours into multiple small tasks (never one vague task like "prepare for exam — 20h"). Example: exam_prep 20h → Review Ch.1 (2h), Review Ch.2 (2h), Practice questions (3h), Summary sheet (3h), Final revision (2h), etc.`
-        : '';
+When generating tasks, respect these budgets exactly. For each category, split the hours into multiple small tasks (max 3h per task, never one vague large task). Example: exam_prep 24h → "Review Chapter 1" (2h), "Review Chapter 2" (2h), ..., "Practice past papers" (3h), "Create summary sheet" (2h), "Final revision" (2h).`
+        : `WORKLOAD BUDGET (based on ${cp} CP = ${cpTotalHours}h total):
+- Calendar attendance already covers: ${Math.round(calHours)}h
+- Self-study tasks to generate: ~${Math.round(selfStudyBudget)}h total
+- Keep individual task size between 1h and 3h. Split larger work into subtasks.
+- The sum of all generated task hours should be approximately ${Math.round(selfStudyBudget)}h.`;
 
       const prompt = `You are a study task extractor. Read the course material below and create one concrete study task for EVERY chapter, topic, weekly session, exercise, assignment, quiz, test, or exam you find.
 
@@ -328,6 +334,19 @@ Return JSON: { "tasks": [ ... ] }`;
         extractedTasks = buildFallbackTasks(course);
         if (noInfo) {
           setFallbackCourses(prev => new Set([...prev, course.id]));
+        }
+      }
+
+      // Scale task hours so their sum matches the CP-based self-study budget.
+      // This ensures workload is always grounded in credit points, not AI guesses.
+      if (extractedTasks.length > 0) {
+        const rawSum = extractedTasks.reduce((s, t) => s + (t.estimated_hours || 2), 0);
+        if (rawSum > 0 && Math.abs(rawSum - selfStudyBudget) > selfStudyBudget * 0.1) {
+          const scaleFactor = selfStudyBudget / rawSum;
+          extractedTasks = extractedTasks.map(t => ({
+            ...t,
+            estimated_hours: Math.max(0.5, Math.round((t.estimated_hours || 2) * scaleFactor * 2) / 2),
+          }));
         }
       }
 
@@ -499,26 +518,37 @@ Return JSON: { "tasks": [ ... ] }`;
               ))}
 
               {/* Summary bar */}
-              <div className="bg-white border border-blue-100 rounded-xl p-4 mb-5 flex flex-wrap gap-6 items-center justify-between">
-                <div className="flex gap-6">
-                  <div className="text-center">
-                    <p className="text-2xl font-bold text-blue-700">{Object.values(tasks).flat().length}</p>
-                    <p className="text-xs text-gray-500">Total tasks</p>
+              {(() => {
+                const cpTotal = courses.reduce((s, c) => s + (c.credit_points || 0) * 30, 0);
+                return (
+                  <div className="bg-white border border-blue-100 rounded-xl p-4 mb-5 flex flex-wrap gap-6 items-center justify-between">
+                    <div className="flex gap-6">
+                      <div className="text-center">
+                        <p className="text-2xl font-bold text-blue-700">{Object.values(tasks).flat().length}</p>
+                        <p className="text-xs text-gray-500">Tasks</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-2xl font-bold text-blue-700">{totalHours.toFixed(0)}h</p>
+                        <p className="text-xs text-gray-500">Task hours</p>
+                      </div>
+                      {cpTotal > 0 && (
+                        <div className="text-center">
+                          <p className="text-2xl font-bold text-emerald-700">{cpTotal}h</p>
+                          <p className="text-xs text-gray-500">CP workload</p>
+                        </div>
+                      )}
+                      <div className="text-center">
+                        <p className="text-2xl font-bold text-blue-700">{courses.length}</p>
+                        <p className="text-xs text-gray-500">Courses</p>
+                      </div>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={handleReExtract} disabled={extracting}>
+                      {extracting ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <RefreshCw className="w-4 h-4 mr-1" />}
+                      Re-extract all
+                    </Button>
                   </div>
-                  <div className="text-center">
-                    <p className="text-2xl font-bold text-blue-700">{totalHours.toFixed(0)}h</p>
-                    <p className="text-xs text-gray-500">Total workload</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-2xl font-bold text-blue-700">{courses.length}</p>
-                    <p className="text-xs text-gray-500">Courses</p>
-                  </div>
-                </div>
-                <Button variant="outline" size="sm" onClick={handleReExtract} disabled={extracting}>
-                  {extracting ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <RefreshCw className="w-4 h-4 mr-1" />}
-                  Re-extract all
-                </Button>
-              </div>
+                );
+              })()}
 
               {/* Workload breakdowns — one per course, collapsible */}
               <div className="mb-5 space-y-2">
