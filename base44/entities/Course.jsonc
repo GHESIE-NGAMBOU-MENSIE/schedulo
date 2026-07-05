@@ -14,6 +14,13 @@
         "type": "string"
       }
     },
+    "course_structure": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Student-confirmed structural elements: lectures, exercises, assignments, quizzes, testate, final_exam, oral_exam, project_work, lab_work, seminar_presentation, paper_essay, thesis_writing, supervision_meetings, literature_work, implementation, revision_buffer"
+    },
     "credit_points": {
       "type": "number"
     },

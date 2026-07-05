@@ -7,13 +7,50 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Checkbox } from '@/components/ui/checkbox';
 import PhaseIndicator from '@/components/schedulo/PhaseIndicator';
 import StepHeader from '@/components/schedulo/StepHeader';
 import ContextChat from '@/components/schedulo/ContextChat';
 import { motion } from 'framer-motion';
 
-const COURSE_TYPES = ['lecture', 'seminar', 'exercise', 'project', 'lab', 'tutorial', 'workshop'];
+const COURSE_TYPES = ['lecture', 'seminar', 'exercise', 'project', 'lab', 'tutorial', 'workshop', 'thesis', 'bachelor_thesis', 'master_thesis'];
+
+const STRUCTURE_ELEMENTS = [
+  { key: 'lectures',               label: '📚 Lectures',                group: 'Fixed events' },
+  { key: 'exercises',              label: '✏️ Exercises / tutorials',    group: 'Fixed events' },
+  { key: 'lab_work',               label: '🔬 Lab work',                 group: 'Fixed events' },
+  { key: 'supervision_meetings',   label: '🤝 Supervision meetings',     group: 'Fixed events' },
+  { key: 'assignments',            label: '📝 Assignments',              group: 'Submissions' },
+  { key: 'quizzes',                label: '📊 Quizzes',                  group: 'Submissions' },
+  { key: 'testate',                label: '✅ Testate',                  group: 'Submissions' },
+  { key: 'seminar_presentation',   label: '🎤 Seminar / presentation',   group: 'Submissions' },
+  { key: 'paper_essay',            label: '📄 Paper / essay',            group: 'Submissions' },
+  { key: 'project_work',           label: '🛠 Project work',             group: 'Project' },
+  { key: 'implementation',         label: '💻 Implementation / dev',     group: 'Project' },
+  { key: 'thesis_writing',         label: '📖 Thesis writing',           group: 'Thesis' },
+  { key: 'literature_work',        label: '🔍 Literature / research',    group: 'Thesis' },
+  { key: 'final_exam',             label: '🎓 Final exam',               group: 'Assessment' },
+  { key: 'oral_exam',              label: '🗣 Oral exam',               group: 'Assessment' },
+  { key: 'revision_buffer',        label: '🔄 Revision / buffer',        group: 'Other' },
+];
+
+const STRUCTURE_GROUPS = ['Fixed events', 'Submissions', 'Project', 'Thesis', 'Assessment', 'Other'];
+
+/** Suggest course structure from course type + name */
+function suggestStructure(courseTypes, courseName) {
+  const types = (courseTypes || []).map(t => t.toLowerCase());
+  const name = (courseName || '').toLowerCase();
+  const isThesis = types.some(t => /thesis|bachelor|master/.test(t)) || /thesis|bachelor|master|bachelorarbeit|masterarbeit/.test(name);
+  const isProject = !isThesis && (types.some(t => /project/.test(t)) || /projekt/.test(name));
+  const isSeminar = types.some(t => /seminar/.test(t));
+  const isLab = types.some(t => /lab|praktikum/.test(t));
+
+  if (isThesis) return ['supervision_meetings', 'literature_work', 'thesis_writing', 'implementation', 'revision_buffer'];
+  if (isProject) return ['project_work', 'implementation', 'seminar_presentation', 'revision_buffer'];
+  if (isSeminar) return ['lectures', 'seminar_presentation', 'paper_essay', 'revision_buffer'];
+  if (isLab) return ['lectures', 'exercises', 'lab_work', 'final_exam', 'revision_buffer'];
+  // Default lecture course
+  return ['lectures', 'exercises', 'assignments', 'final_exam', 'revision_buffer'];
+}
 
 export default function CourseDetail() {
   const { planId, courseId } = useParams();
@@ -36,6 +73,8 @@ export default function CourseDetail() {
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [courseStructure, setCourseStructure] = useState([]);
+  const [structureSuggested, setStructureSuggested] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -62,6 +101,15 @@ export default function CourseDetail() {
       setPriority(c.priority || 'medium');
       setMaterialsText(c.materials_text || '');
       setFiles(c.material_files || []);
+      // Course structure — use saved or suggest from type
+      if (c.course_structure && c.course_structure.length > 0) {
+        setCourseStructure(c.course_structure);
+        setStructureSuggested(true);
+      } else {
+        const suggested = suggestStructure(c.course_type, c.name);
+        setCourseStructure(suggested);
+        setStructureSuggested(false);
+      }
       const all = await base44.entities.Course.filter({ plan_id: planId });
       setAllCourses(all);
       setLoading(false);
@@ -71,6 +119,16 @@ export default function CourseDetail() {
 
   const toggleType = (type) => {
     setSelectedTypes(prev => prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]);
+  };
+
+  const toggleStructure = (key) => {
+    setCourseStructure(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
+    setStructureSuggested(true);
+  };
+
+  const applySuggestion = () => {
+    const suggested = suggestStructure(selectedTypes, course?.name);
+    setCourseStructure(suggested);
   };
 
   const handleFileUpload = async (e) => {
@@ -89,6 +147,7 @@ export default function CourseDetail() {
   const saveCourse = async () => {
     await base44.entities.Course.update(courseId, {
       course_type: selectedTypes,
+      course_structure: courseStructure,
       credit_points: credits ? Number(credits) : null,
       exam_date: examType === 'exact' ? (examDate || null) : examType === 'submission' ? (examDate || null) : null,
       exam_type: examType,
@@ -172,6 +231,52 @@ export default function CourseDetail() {
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Course structure */}
+          <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-4">
+            <div className="flex items-start justify-between mb-1">
+              <div>
+                <h3 className="font-semibold text-gray-900">Course structure</h3>
+                <p className="text-sm text-gray-400 mb-3">
+                  {structureSuggested
+                    ? 'Confirm or adjust what this course actually contains. This drives the workload categories.'
+                    : 'We suggested a structure based on the course type — please confirm or change it.'}
+                </p>
+              </div>
+              <button
+                onClick={applySuggestion}
+                className="text-xs text-blue-500 hover:text-blue-700 whitespace-nowrap ml-4 mt-1"
+              >
+                Reset to suggestion
+              </button>
+            </div>
+            {STRUCTURE_GROUPS.map(group => {
+              const items = STRUCTURE_ELEMENTS.filter(e => e.group === group);
+              return (
+                <div key={group} className="mb-3">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">{group}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {items.map(el => (
+                      <button
+                        key={el.key}
+                        onClick={() => toggleStructure(el.key)}
+                        className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all border ${
+                          courseStructure.includes(el.key)
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'bg-white text-gray-500 border-gray-200 hover:border-blue-300 hover:text-blue-600'
+                        }`}
+                      >
+                        {el.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+            {courseStructure.length === 0 && (
+              <p className="text-xs text-amber-600 mt-1">⚠ No structure selected. Please select at least one element so workload categories can be created.</p>
+            )}
           </div>
 
           {/* Details grid */}

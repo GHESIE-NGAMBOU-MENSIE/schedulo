@@ -1,13 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
-import { ListChecks, ArrowRight, ArrowLeft, Loader2, Edit2, Check, Trash2, Plus, ChevronDown, ChevronUp, AlertTriangle, RefreshCw, AlertCircle } from 'lucide-react';
-import WorkloadBreakdown from '@/components/schedulo/WorkloadBreakdown';
-import WeeklyTaskList from '@/components/schedulo/WeeklyTaskList';
-import { t } from '@/lib/i18n';
+import { ListChecks, ArrowRight, ArrowLeft, Loader2, Plus, AlertTriangle, RefreshCw, AlertCircle, Check } from 'lucide-react';
+import CourseTaskSection from '@/components/schedulo/CourseTaskSection';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import PhaseIndicator from '@/components/schedulo/PhaseIndicator';
 import StepHeader from '@/components/schedulo/StepHeader';
@@ -15,87 +12,178 @@ import ContextChat from '@/components/schedulo/ContextChat';
 import { motion } from 'framer-motion';
 
 const TASK_TYPES = ['reading', 'assignment', 'exercise', 'revision', 'test', 'project_work'];
+const TYPE_LABELS = { reading: 'Study material', assignment: 'Assignment', exercise: 'Exercise', revision: 'Revision', test: 'Exam/Quiz prep', project_work: 'Project work' };
 
-function TaskTemporalBadges({ task }) {
-  const items = [];
-  if (task.target_date) items.push({ label: `Target: ${task.target_date}`, color: 'bg-blue-50 text-blue-700' });
-  if (task.target_week) items.push({ label: `Week ${task.target_week}${task.source_week_label ? ` (${task.source_week_label})` : ''}`, color: 'bg-indigo-50 text-indigo-700' });
-  if (task.not_before_date) items.push({ label: `Not before: ${task.not_before_date}`, color: 'bg-amber-50 text-amber-700' });
-  if (task.related_course_event_date) items.push({ label: `${task.related_course_event_type || 'Event'}: ${task.related_course_event_date}`, color: 'bg-purple-50 text-purple-700' });
-  if (task.exam_date) items.push({ label: `Exam: ${task.exam_date}`, color: 'bg-red-50 text-red-700' });
-  if (items.length === 0) return null;
-  return (
-    <div className="flex flex-wrap gap-1 mt-1.5">
-      {items.map((item, i) =>
-      <span key={i} className={`px-2 py-0.5 rounded text-xs font-medium ${item.color}`}>{item.label}</span>
-      )}
-    </div>);
+// Map course_structure keys to LLM-friendly descriptions
+const STRUCTURE_LABELS = {
+  lectures:             'Lectures (attendance time — counted in workload)',
+  exercises:            'Exercises / tutorials (attendance)',
+  lab_work:             'Lab sessions (attendance)',
+  supervision_meetings: 'Supervision meetings',
+  assignments:          'Assignments / submissions with deadlines',
+  quizzes:              'Quizzes (with preparation)',
+  testate:              'Testate (with preparation)',
+  seminar_presentation: 'Seminar presentation',
+  paper_essay:          'Paper / essay',
+  project_work:         'Project planning and execution milestones',
+  implementation:       'Implementation / development tasks',
+  thesis_writing:       'Thesis writing milestones',
+  literature_work:      'Literature search, reading, and review',
+  final_exam:           'Final exam preparation',
+  oral_exam:            'Oral exam preparation',
+  revision_buffer:      'Revision / buffer tasks',
+};
 
+function buildPrompt(course, plan, selfStudyBudget, calHours, workloadBreakdown) {
+  const structure = (course.course_structure && course.course_structure.length > 0)
+    ? course.course_structure
+    : [];
+
+  const isThesis = structure.some(k => ['thesis_writing', 'literature_work'].includes(k))
+    || (course.course_type || []).some(t => /thesis|bachelor|master/.test(t));
+  const isProject = !isThesis && structure.includes('project_work');
+
+  const structureDesc = structure.length > 0
+    ? `CONFIRMED COURSE STRUCTURE (student-confirmed — generate tasks ONLY for these elements):\n${structure.map(k => `  - ${STRUCTURE_LABELS[k] || k}`).join('\n')}`
+    : `COURSE TYPE: ${(course.course_type || []).join(', ') || 'lecture'}`;
+
+  const wbLines = workloadBreakdown
+    ? Object.entries(workloadBreakdown).map(([k, v]) => `  - ${k}: ${v}h`).join('\n')
+    : `  - Self-study tasks: ~${Math.round(selfStudyBudget)}h`;
+
+  const thesisRules = isThesis ? `
+## THESIS / RESEARCH PROJECT RULES
+Generate milestones ONLY from this list (in order):
+1. Topic clarification / refine research question (2-4h)
+2. Literature search (2-4h per round)
+3. Read and annotate papers (2-3h each)
+4. Methodology / design decisions (3-4h)
+5. Implementation or artifact development (if relevant, 3-6h per step)
+6. Evaluation / experiment setup (if relevant, 3-4h)
+7. Write thesis chapter: [chapter name] (3-5h each)
+8. Revision and proofreading (2-4h per round)
+9. Supervision meeting preparation (1-2h each)
+10. Buffer (2-4h)
+DO NOT create lecture reading, exercise, or exam prep tasks.` : '';
+
+  const projectRules = isProject ? `
+## PROJECT COURSE RULES
+Generate milestones ONLY:
+1. Project planning / requirements (2-4h)
+2. Research / background (2-3h)
+3. Implementation steps (3-5h each, name them specifically)
+4. Testing / validation (2-3h)
+5. Documentation (2-4h)
+6. Presentation preparation (2-3h)
+7. Buffer (1-2h)
+DO NOT create lecture reading or exam prep tasks unless explicitly in the structure.` : '';
+
+  return `You are a study task extractor. Extract concrete, actionable study tasks for this course.
+
+TODAY: ${new Date().toISOString().slice(0, 10)}
+STUDY PERIOD: ${plan.start_date} to ${plan.end_date}
+
+COURSE: ${course.name}
+CREDIT POINTS: ${course.credit_points || 5} CP = ${(course.credit_points || 5) * 30}h total workload
+CALENDAR ATTENDANCE: ${Math.round(calHours)}h (already counted — do NOT create tasks for these)
+SELF-STUDY BUDGET: ~${Math.round(selfStudyBudget)}h to distribute across tasks
+EXAM TYPE: ${course.exam_type || 'unknown'}
+EXAM DATE: ${course.exam_date || (course.exam_window_end ? `window: ${course.exam_window_start || '?'}–${course.exam_window_end}` : 'unknown')}
+COURSE PERIOD: ${course.course_start_date || plan.start_date} to ${course.course_end_date || plan.end_date}
+DIFFICULTY: ${course.difficulty || 'medium'} | FAMILIARITY: ${course.familiarity || 'medium'}
+DESCRIPTION: ${course.description || 'none'}
+
+${structureDesc}
+
+WORKLOAD BUDGET PER CATEGORY (respect these — tasks in each category should sum to approx these hours):
+${wbLines}
+The sum of ALL task hours should be approximately ${Math.round(selfStudyBudget)}h.
+
+COURSE MATERIALS / SYLLABUS:
+${course.materials_text || '(none provided — generate reasonable tasks based on course name, type, and structure)'}
+${course.material_files?.length > 0 ? `UPLOADED FILES: ${course.material_files.join(', ')}` : ''}
+${thesisRules}
+${projectRules}
+
+## EXTRACTION RULES
+
+1. CHAPTERS / READING SECTIONS → task_type="reading", title="Work through Chapter N: [title]", max 3h per task
+2. LECTURE TOPICS → task_type="revision", title="Review: [topic]", 1-2h each
+3. EXERCISE SHEETS → task_type="exercise", title="Work through Exercise N: [topic]", exercise_number=N
+4. ASSIGNMENTS → task_type="assignment", title="Complete Assignment N: [topic]", deadline=due date, target_date=5-7 days before
+5. QUIZZES / TESTATE → task_type="test", title="Prepare for quiz: [topic]" or "Prepare for Testat N", deadline=quiz date, target_date=3-5 days before. Also create 1h task for the quiz duration itself.
+6. FINAL EXAM → task_type="test", title="Prepare for final exam: [topic]", exam_date=exam date. Split into multiple sub-tasks (e.g. "Review Chapter 1", "Practice past papers").
+7. THESIS/PROJECT milestones → task_type="project_work", specific milestone names
+
+## RULES
+- Max 3h per individual task. Split large blocks into sub-tasks.
+- Never use vague titles like "Study for exam (20h)".
+- Total task hours ≈ ${Math.round(selfStudyBudget)}h.
+- Only generate tasks for elements in the confirmed course structure.
+- Use "" for missing dates (not null).
+- For "Week N" references: set target_week=N.
+- source_text: the exact line from materials this task came from, or "".
+
+Return JSON: { "tasks": [ ... ] }`;
 }
 
-function TaskEditForm({ task, courseId, onSave, onCancel, setTasks }) {
-  const update = (field, val) => setTasks((prev) => ({
-    ...prev,
-    [courseId]: prev[courseId].map((t) => t.id === task.id ? { ...t, [field]: val } : t)
-  }));
+function buildFallbackTasks(course, selfStudyBudget) {
+  const structure = course.course_structure || [];
+  const cp = course.credit_points || 5;
+  const hoursPerWeek = Math.max(2, Math.round(selfStudyBudget / 14));
 
-  return (
-    <div className="space-y-3">
-      <Input value={task.title} onChange={(e) => update('title', e.target.value)} placeholder="Task title" />
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <Select value={task.task_type} onValueChange={(v) => update('task_type', v)}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
-          <SelectContent>{TASK_TYPES.map((tt) => <SelectItem key={tt} value={tt}>{tt.replace('_', ' ')}</SelectItem>)}</SelectContent>
-        </Select>
-        <Input type="number" value={task.estimated_hours} onChange={(e) => update('estimated_hours', Number(e.target.value))} placeholder="Hours" />
-        <div>
-          <Label className="text-xs text-gray-500">Deadline</Label>
-          <Input type="date" value={task.deadline || ''} onChange={(e) => update('deadline', e.target.value || null)} />
-        </div>
-        <Select value={task.priority} onValueChange={(v) => update('priority', v)}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="low">Low</SelectItem>
-            <SelectItem value="medium">Medium</SelectItem>
-            <SelectItem value="high">High</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-        <div>
-          <Label className="text-xs text-gray-500">Target date</Label>
-          <Input type="date" value={task.target_date || ''} onChange={(e) => update('target_date', e.target.value || null)} />
-        </div>
-        <div>
-          <Label className="text-xs text-gray-500">Not before</Label>
-          <Input type="date" value={task.not_before_date || ''} onChange={(e) => update('not_before_date', e.target.value || null)} />
-        </div>
-        <div>
-          <Label className="text-xs text-gray-500">Target week #</Label>
-          <Input type="number" value={task.target_week || ''} onChange={(e) => update('target_week', e.target.value ? Number(e.target.value) : null)} placeholder="e.g. 3" />
-        </div>
-        <div>
-          <Label className="text-xs text-gray-500">Related event date</Label>
-          <Input type="date" value={task.related_course_event_date || ''} onChange={(e) => update('related_course_event_date', e.target.value || null)} />
-        </div>
-        <div>
-          <Label className="text-xs text-gray-500">Related event type</Label>
-          <Input value={task.related_course_event_type || ''} onChange={(e) => update('related_course_event_type', e.target.value)} placeholder="lecture / exercise / quiz" />
-        </div>
-        <div>
-          <Label className="text-xs text-gray-500">Exam date</Label>
-          <Input type="date" value={task.exam_date || ''} onChange={(e) => update('exam_date', e.target.value || null)} />
-        </div>
-      </div>
-      {task.source_text &&
-      <p className="text-xs text-gray-400 italic border-l-2 border-gray-200 pl-2">Source: "{task.source_text}"</p>
-      }
-      <div className="flex gap-2">
-        <Button size="sm" onClick={() => onSave(task.id, task)}><Check className="w-4 h-4 mr-1" /> Save</Button>
-        <Button size="sm" variant="ghost" onClick={onCancel}>Cancel</Button>
-      </div>
-    </div>);
+  const isThesis = structure.some(k => ['thesis_writing', 'literature_work'].includes(k))
+    || (course.course_type || []).some(t => /thesis|bachelor|master/.test(t));
 
+  if (isThesis) {
+    return [
+      { title: `Clarify research question and scope`, task_type: 'project_work', estimated_hours: 3, priority: 'high', target_week: 1 },
+      { title: `Initial literature search`, task_type: 'reading', estimated_hours: 4, priority: 'high', target_week: 2 },
+      { title: `Read and annotate key papers (round 1)`, task_type: 'reading', estimated_hours: 4, priority: 'high', target_week: 3 },
+      { title: `Read and annotate key papers (round 2)`, task_type: 'reading', estimated_hours: 4, priority: 'medium', target_week: 4 },
+      { title: `Define methodology / approach`, task_type: 'project_work', estimated_hours: 3, priority: 'high', target_week: 5 },
+      { title: `Write thesis outline`, task_type: 'project_work', estimated_hours: 2, priority: 'high', target_week: 5 },
+      { title: `Implementation / artifact development (milestone 1)`, task_type: 'project_work', estimated_hours: 5, priority: 'high', target_week: 6 },
+      { title: `Implementation / artifact development (milestone 2)`, task_type: 'project_work', estimated_hours: 5, priority: 'high', target_week: 8 },
+      { title: `Write chapter: Introduction`, task_type: 'project_work', estimated_hours: 3, priority: 'high', target_week: 9 },
+      { title: `Write chapter: Related Work`, task_type: 'project_work', estimated_hours: 4, priority: 'high', target_week: 10 },
+      { title: `Write chapter: Methodology`, task_type: 'project_work', estimated_hours: 4, priority: 'high', target_week: 11 },
+      { title: `Write chapter: Results / Implementation`, task_type: 'project_work', estimated_hours: 4, priority: 'high', target_week: 12 },
+      { title: `Write chapter: Discussion / Conclusion`, task_type: 'project_work', estimated_hours: 3, priority: 'high', target_week: 13 },
+      { title: `Revision and proofreading`, task_type: 'revision', estimated_hours: 4, priority: 'high', target_week: 14 },
+      { title: `Buffer — final corrections`, task_type: 'revision', estimated_hours: 2, priority: 'medium', target_week: 14 },
+    ];
+  }
+
+  if (structure.includes('project_work')) {
+    return [
+      { title: `Project planning and requirements`, task_type: 'project_work', estimated_hours: 3, priority: 'high', target_week: 1 },
+      { title: `Background research`, task_type: 'reading', estimated_hours: 3, priority: 'medium', target_week: 2 },
+      { title: `Implementation milestone 1`, task_type: 'project_work', estimated_hours: 5, priority: 'high', target_week: 4 },
+      { title: `Implementation milestone 2`, task_type: 'project_work', estimated_hours: 5, priority: 'high', target_week: 7 },
+      { title: `Testing and validation`, task_type: 'exercise', estimated_hours: 3, priority: 'medium', target_week: 9 },
+      { title: `Documentation`, task_type: 'project_work', estimated_hours: 4, priority: 'medium', target_week: 11 },
+      { title: `Presentation preparation`, task_type: 'project_work', estimated_hours: 3, priority: 'high', target_week: 13 },
+      { title: `Buffer`, task_type: 'revision', estimated_hours: 2, priority: 'low', target_week: 14 },
+    ];
+  }
+
+  // Generic lecture course
+  const tasks = [];
+  for (let i = 1; i <= 5; i++) {
+    tasks.push({ title: `Work through course material — Part ${i}`, task_type: 'reading', estimated_hours: Math.max(2, Math.round(selfStudyBudget * 0.08)), priority: 'medium', target_week: i * 2 });
+  }
+  if (structure.includes('assignments')) {
+    for (let i = 1; i <= 3; i++) {
+      tasks.push({ title: `Complete assignment ${i}`, task_type: 'assignment', estimated_hours: 3, priority: 'high', target_week: i * 3 });
+    }
+  }
+  if (structure.includes('final_exam') || structure.includes('oral_exam') || structure.length === 0) {
+    tasks.push({ title: `Prepare for final exam — review all chapters`, task_type: 'test', estimated_hours: 4, priority: 'high', target_week: 13, exam_date: course.exam_date || null });
+    tasks.push({ title: `Prepare for final exam — practice problems`, task_type: 'test', estimated_hours: 3, priority: 'high', target_week: 14, exam_date: course.exam_date || null });
+  }
+  tasks.push({ title: `Revision and buffer`, task_type: 'revision', estimated_hours: Math.max(2, Math.round(selfStudyBudget * 0.05)), priority: 'low', target_week: 14 });
+  return tasks;
 }
 
 export default function TaskExtraction() {
@@ -104,334 +192,232 @@ export default function TaskExtraction() {
   const [courses, setCourses] = useState([]);
   const [tasks, setTasks] = useState({});
   const [extracting, setExtracting] = useState(false);
-  const [extractingCourse, setExtractingCourse] = useState('');
+  const [extractingCourseId, setExtractingCourseId] = useState(null);
   const [extracted, setExtracted] = useState(false);
   const [editTask, setEditTask] = useState(null);
-  const [activeCourse, setActiveCourse] = useState(0);
   const [showAddTask, setShowAddTask] = useState(false);
-  const [newTask, setNewTask] = useState({ title: '', task_type: 'reading', deadline: '', estimated_hours: 2, priority: 'medium' });
+  const [addTaskForCourse, setAddTaskForCourse] = useState(null);
+  const [newTask, setNewTask] = useState({ title: '', task_type: 'reading', deadline: '', estimated_hours: 2, target_week: '' });
   const [confirming, setConfirming] = useState(false);
-  const [expandedSource, setExpandedSource] = useState({});
-  const [coverageStats, setCoverageStats] = useState({});
-  const [showReExtractConfirm, setShowReExtractConfirm] = useState(false);
   const [workloadBreakdowns, setWorkloadBreakdowns] = useState({});
   const [calendarHoursByCourse, setCalendarHoursByCourse] = useState({});
   const [planStartDate, setPlanStartDate] = useState('');
-  const [addTaskForCourse, setAddTaskForCourse] = useState(null); // courseId
+  const [fallbackCourses, setFallbackCourses] = useState(new Set());
+  const [showReExtractConfirm, setShowReExtractConfirm] = useState(false);
+  const [plan, setPlan] = useState(null);
 
-  useEffect(() => {loadData();}, [planId]);
+  useEffect(() => { loadData(); }, [planId]);
 
   const loadData = async () => {
+    const p = await base44.entities.StudyPlan.get(planId);
+    setPlan(p);
+    setPlanStartDate(p.start_date || '');
+
     const courseList = await base44.entities.Course.filter({ plan_id: planId });
     setCourses(courseList);
 
-    // Compute calendar attendance hours per course from plan events
-    try {
-      const plan = await base44.entities.StudyPlan.get(planId);
-      setPlanStartDate(plan.start_date || '');
-      const events = plan.calendar_events || [];
-      const hours = {};
-      courseList.forEach(c => {
-        const courseLower = c.name.toLowerCase().replace(/\b(vorlesung|lecture|course|übung|exercise|lab|seminar)\b/gi, '').trim();
-        const matching = events.filter(e => {
-          const eLower = (e.name || '').toLowerCase();
-          return eLower.includes(courseLower) || courseLower.includes(eLower.split(' ')[0]);
-        });
-        // Each event is weekly during study period — estimate hours
-        const weekCount = plan.start_date && plan.end_date
-          ? Math.ceil((new Date(plan.end_date) - new Date(plan.start_date)) / (7 * 86400000))
-          : 14;
-        const hoursPerEvent = matching.map(e => {
-          if (e.start_time && e.end_time) {
-            const [sh, sm] = e.start_time.split(':').map(Number);
-            const [eh, em] = e.end_time.split(':').map(Number);
-            return ((eh * 60 + em) - (sh * 60 + sm)) / 60;
-          }
-          return 1.5; // assume 90min if no time given
-        });
-        const totalPerWeek = hoursPerEvent.reduce((s, h) => s + h, 0);
-        hours[c.id] = Math.round(totalPerWeek * weekCount * 10) / 10;
+    // Calendar hours per course
+    const events = p.calendar_events || [];
+    const weekCount = p.start_date && p.end_date
+      ? Math.ceil((new Date(p.end_date) - new Date(p.start_date)) / (7 * 86400000))
+      : 14;
+    const calHours = {};
+    courseList.forEach(c => {
+      const nameLower = c.name.toLowerCase().split(' ').filter(w => w.length > 3);
+      const matching = events.filter(e => {
+        const eLower = (e.name || '').toLowerCase();
+        return nameLower.some(w => eLower.includes(w));
       });
-      setCalendarHoursByCourse(hours);
-    } catch (e) {}
+      const hpw = matching.reduce((s, e) => {
+        if (e.start_time && e.end_time) {
+          const [sh, sm] = e.start_time.split(':').map(Number);
+          const [eh, em] = e.end_time.split(':').map(Number);
+          return s + Math.max(0, (eh * 60 + em - sh * 60 - sm) / 60);
+        }
+        return s + 1.5;
+      }, 0);
+      calHours[c.id] = Math.round(hpw * weekCount * 10) / 10;
+    });
+    setCalendarHoursByCourse(calHours);
 
     const existingTasks = await base44.entities.StudyTask.filter({ plan_id: planId });
     if (existingTasks.length > 0) {
       const grouped = {};
-      courseList.forEach((c) => {grouped[c.id] = [];});
-      existingTasks.forEach((t) => {if (grouped[t.course_id] !== undefined) grouped[t.course_id].push(t);});
+      courseList.forEach(c => { grouped[c.id] = []; });
+      existingTasks.forEach(t => { if (grouped[t.course_id] !== undefined) grouped[t.course_id].push(t); });
       setTasks(grouped);
       setExtracted(true);
     } else {
-      extractTasksForCourses(courseList, false);
+      extractAllCourses(courseList, p, calHours, false);
     }
   };
 
-  const [fallbackCourses, setFallbackCourses] = useState(new Set()); // course IDs that used fallback
-
-  // Client-side fallback: parse chapter/topic lines from materials_text
-  // Returns ~10 tasks (5 reading + 5 exercise) when no course info given
-  const buildFallbackTasks = (course) => {
-    const material = course.materials_text || '';
-    const lines = material.split('\n').map((l) => l.trim()).filter(Boolean);
-    const chapterRe = /^(chapter|ch\.?|topic|week|session|lecture|woche|sitzung|einheit|thema)\s*(\d+)[:\s\-–]*(.*)/i;
-    const found = lines.map((l) => l.match(chapterRe)).filter(Boolean);
-
-    if (found.length >= 3) {
-      return found.map((m, i) => ({
-        title: `Read ${m[1]} ${m[2]}${m[3] ? ': ' + m[3].trim() : ''}`,
-        task_type: 'reading', estimated_hours: 2, priority: 'medium',
-        target_week: parseInt(m[2]) || i + 1,
-        source_week_label: m[0].trim().slice(0, 80),
-        source_text: m[0].trim().slice(0, 200),
-        date_confidence: 'none'
-      }));
-    }
-    // Generic 10-task fallback structure
-    return [
-      { title: `Read Chapter 1: Introduction to ${course.name}`, task_type: 'reading', estimated_hours: 2, priority: 'medium', target_week: 1, date_confidence: 'none' },
-      { title: `Read Chapter 2: Core Concepts`, task_type: 'reading', estimated_hours: 2, priority: 'medium', target_week: 2, date_confidence: 'none' },
-      { title: `Read Chapter 3: Advanced Topics`, task_type: 'reading', estimated_hours: 2, priority: 'medium', target_week: 3, date_confidence: 'none' },
-      { title: `Read Chapter 4: Applications`, task_type: 'reading', estimated_hours: 2, priority: 'medium', target_week: 4, date_confidence: 'none' },
-      { title: `Read Chapter 5: Summary and Review`, task_type: 'reading', estimated_hours: 2, priority: 'medium', target_week: 5, date_confidence: 'none' },
-      { title: `Practice exercises – Week 1`, task_type: 'exercise', estimated_hours: 1.5, priority: 'medium', target_week: 1, date_confidence: 'none' },
-      { title: `Practice exercises – Week 2`, task_type: 'exercise', estimated_hours: 1.5, priority: 'medium', target_week: 2, date_confidence: 'none' },
-      { title: `Practice exercises – Week 3`, task_type: 'exercise', estimated_hours: 1.5, priority: 'medium', target_week: 3, date_confidence: 'none' },
-      { title: `Practice exercises – Week 4`, task_type: 'exercise', estimated_hours: 1.5, priority: 'medium', target_week: 4, date_confidence: 'none' },
-      { title: `Prepare for final exam: ${course.name}`, task_type: 'test', estimated_hours: 3, priority: 'high', deadline: course.exam_date || null, exam_date: course.exam_date || null, date_confidence: course.exam_date ? 'exact' : 'none' },
-    ];
+  const getSelfStudyBudget = (course, calHours) => {
+    const cp = course.credit_points || 5;
+    const total = cp * 30;
+    const cal = calHours[course.id] || 0;
+    return Math.max(total * 0.5, total - cal);
   };
 
-  const extractTasksForCourses = async (courseList, deleteExisting = false) => {
+  const extractSingleCourse = async (course, p, calHours, wb, deleteFirst = false) => {
+    setExtractingCourseId(course.id);
+    const selfStudyBudget = getSelfStudyBudget(course, calHours);
+
+    if (deleteFirst) {
+      await base44.entities.StudyTask.deleteMany({ plan_id: planId, course_id: course.id });
+    }
+
+    const prompt = buildPrompt(course, p, selfStudyBudget, calHours[course.id] || 0, wb);
+    const taskSchema = {
+      type: "object",
+      properties: {
+        tasks: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              title: { type: "string" },
+              task_type: { type: "string" },
+              deadline: { type: "string" },
+              estimated_hours: { type: "number" },
+              priority: { type: "string" },
+              target_date: { type: "string" },
+              not_before_date: { type: "string" },
+              target_week: { type: "number" },
+              source_week_label: { type: "string" },
+              related_course_event_date: { type: "string" },
+              related_course_event_type: { type: "string" },
+              exam_date: { type: "string" },
+              chapter_number: { type: "number" },
+              exercise_number: { type: "number" },
+              assignment_number: { type: "number" },
+              date_confidence: { type: "string" },
+              source_text: { type: "string" }
+            },
+            required: ["title", "task_type", "estimated_hours"]
+          }
+        }
+      }
+    };
+
+    let extracted = [];
+    try {
+      const result = await base44.integrations.Core.InvokeLLM({ prompt, response_json_schema: taskSchema });
+      extracted = result.tasks || [];
+    } catch (e) {
+      console.error('Extraction failed for', course.name, e);
+    }
+
+    let isFallback = false;
+    if (extracted.length === 0) {
+      extracted = buildFallbackTasks(course, selfStudyBudget);
+      isFallback = true;
+    }
+
+    // Scale to CP self-study budget
+    if (extracted.length > 0) {
+      const rawSum = extracted.reduce((s, t) => s + (t.estimated_hours || 2), 0);
+      if (rawSum > 0 && Math.abs(rawSum - selfStudyBudget) > selfStudyBudget * 0.12) {
+        const scale = selfStudyBudget / rawSum;
+        extracted = extracted.map(t => ({
+          ...t,
+          estimated_hours: Math.max(0.5, Math.round((t.estimated_hours || 2) * scale * 2) / 2),
+        }));
+      }
+    }
+
+    const toNull = v => (!v || v === '') ? null : v;
+    const created = [];
+    for (const t of extracted) {
+      const record = await base44.entities.StudyTask.create({
+        plan_id: planId,
+        course_id: course.id,
+        course_name: course.name,
+        title: t.title,
+        task_type: TASK_TYPES.includes(t.task_type) ? t.task_type : 'reading',
+        deadline: toNull(t.deadline),
+        estimated_hours: t.estimated_hours || 2,
+        priority: ['low', 'medium', 'high'].includes(t.priority) ? t.priority : 'medium',
+        status: 'open',
+        confirmed: false,
+        target_date: toNull(t.target_date),
+        not_before_date: toNull(t.not_before_date),
+        target_week: t.target_week || null,
+        source_week_label: t.source_week_label || null,
+        related_course_event_date: toNull(t.related_course_event_date),
+        related_course_event_type: t.related_course_event_type || null,
+        exam_date: toNull(t.exam_date),
+        chapter_number: t.chapter_number || null,
+        exercise_number: t.exercise_number || null,
+        assignment_number: t.assignment_number || null,
+        date_confidence: t.date_confidence || 'none',
+        source_text: t.source_text || null
+      });
+      created.push(record);
+    }
+
+    setExtractingCourseId(null);
+    return { created, isFallback };
+  };
+
+  const extractAllCourses = async (courseList, p, calHours, deleteExisting) => {
     setExtracting(true);
     setShowReExtractConfirm(false);
-    const newTasks = {};
-    const newCoverageStats = {};
-    const plan = await base44.entities.StudyPlan.get(planId);
-
     if (deleteExisting) {
       await base44.entities.StudyTask.deleteMany({ plan_id: planId });
     }
-
+    const newTasks = {};
+    const newFallbacks = new Set();
     for (const course of courseList) {
-      setExtractingCourse(course.name);
-
-      // CP-based workload budget
-      const cp = course.credit_points || 5;
-      const cpTotalHours = cp * 30;
-      // Subtract calendar attendance hours
-      const calHours = calendarHoursByCourse[course.id] || 0;
-      const selfStudyBudget = Math.max(cpTotalHours - calHours, cpTotalHours * 0.6);
-
       const wb = workloadBreakdowns[course.id];
-      const wbText = wb
-        ? `WORKLOAD BUDGET (student-approved hours per category):
-${Object.entries(wb).map(([k, v]) => `- ${k}: ${v}h`).join('\n')}
-Total: ${Object.values(wb).reduce((s, v) => s + v, 0)}h
-
-When generating tasks, respect these budgets exactly. For each category, split the hours into multiple small tasks (max 3h per task, never one vague large task). Example: exam_prep 24h → "Review Chapter 1" (2h), "Review Chapter 2" (2h), ..., "Practice past papers" (3h), "Create summary sheet" (2h), "Final revision" (2h).`
-        : `WORKLOAD BUDGET (based on ${cp} CP = ${cpTotalHours}h total):
-- Calendar attendance already covers: ${Math.round(calHours)}h
-- Self-study tasks to generate: ~${Math.round(selfStudyBudget)}h total
-- Keep individual task size between 1h and 3h. Split larger work into subtasks.
-- The sum of all generated task hours should be approximately ${Math.round(selfStudyBudget)}h.`;
-
-      const prompt = `You are a study task extractor. Read the course material below and create one concrete study task for EVERY chapter, topic, weekly session, exercise, assignment, quiz, test, or exam you find.
-
-TODAY: ${new Date().toISOString().slice(0, 10)}
-STUDY PERIOD: ${plan.start_date} to ${plan.end_date}
-
-COURSE: ${course.name}
-TYPE: ${(course.course_type || []).join(', ') || 'lecture'}
-CREDIT POINTS: ${course.credit_points || 5}
-EXAM TYPE: ${course.exam_type || 'unknown'}
-EXAM DATE: ${course.exam_date || (course.exam_window_end ? `window: ${course.exam_window_start || '?'} – ${course.exam_window_end}` : 'unknown')}
-COURSE PERIOD: ${course.course_start_date || plan.start_date} to ${course.course_end_date || plan.end_date}
-DIFFICULTY: ${course.difficulty || 'medium'} | FAMILIARITY: ${course.familiarity || 'medium'}
-DESCRIPTION: ${course.description || ''}
-${course.exam_type === 'none' ? 'NOTE: This course has NO exam. Do not create exam preparation tasks.' : ''}
-${course.exam_type === 'window' ? `NOTE: Exact exam date unknown. Plan exam preparation to finish by ${course.exam_window_end}. Mark exam prep tasks as estimated.` : ''}
-${course.exam_type === 'unknown' ? 'NOTE: Exam date unknown. Create provisional exam preparation tasks at the end of the course period. Mark them as estimated.' : ''}
-${wbText}
-MATERIALS / SYLLABUS:
-${course.materials_text || '(no materials — use course name and description to create reasonable tasks)'}
-
-## EXTRACTION RULES — FOLLOW EXACTLY
-
-**One task per item — never summarize multiple chapters into one task.**
-
-1. CHAPTER / READING SECTION → task_type="reading", title="Read Chapter N: [title]", chapter_number=N
-2. WEEKLY SESSION / TOPIC / LECTURE → task_type="revision", title="Review [topic]", set not_before_date = session date if known, target_date = 1-3 days after
-3. EXERCISE SHEET / LAB → task_type="exercise", title="Work through Exercise [N]", exercise_number=N, not_before_date = release date if known
-4. ASSIGNMENT / SUBMISSION → task_type="assignment", title="Complete Assignment [N]: [topic]", deadline = due date, target_date = 5-7 days before
-5. QUIZ / TEST / TESTAT → task_type="test", title="Prepare for quiz/test: [topic]", deadline = quiz date, target_date = 3-5 days before
-6. EXAM → task_type="test", title="Prepare for final exam", deadline = exam date, exam_date = exam date
-7. PROJECT / THESIS / SEMINAR (no chapters) → generate milestones: Refine research question, Search literature, Read papers, Write outline, Write draft, Revise, Submit
-
-## DATE RULES
-- Dates in material → save as YYYY-MM-DD
-- "Week N" or "KW N" → set target_week=N, source_week_label="Week N"
-- Type A (lecture/exercise/session): not_before_date = event date, target_date = 1-3 days after, NO deadline
-- Type B (quiz/assignment/exam): deadline = event date, target_date = 3-7 days before
-- date_confidence: "exact" if date from material, "estimated" if inferred, "none" if unknown
-- source_text: the exact line from the material this task came from (or "" if none)
-
-## CRITICAL
-- Return AS MANY tasks as there are items in the material. If 10 chapters → 10+ tasks.
-- NEVER return fewer than 3 tasks for any course with material or a description.
-- For missing date fields, use "" (empty string), not null.
-
-Return JSON: { "tasks": [ ... ] }`;
-
-      const taskSchema = {
-        type: "object",
-        properties: {
-          tasks: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                title: { type: "string" },
-                task_type: { type: "string" },
-                deadline: { type: "string" },
-                estimated_hours: { type: "number" },
-                priority: { type: "string" },
-                suggested_phase: { type: "string" },
-                target_date: { type: "string" },
-                not_before_date: { type: "string" },
-                target_week: { type: "number" },
-                source_week_label: { type: "string" },
-                related_course_event_date: { type: "string" },
-                related_course_event_type: { type: "string" },
-                exam_date: { type: "string" },
-                chapter_number: { type: "number" },
-                topic_number: { type: "number" },
-                exercise_number: { type: "number" },
-                assignment_number: { type: "number" },
-                date_confidence: { type: "string" },
-                source_text: { type: "string" }
-              },
-              required: ["title", "task_type", "estimated_hours"]
-            }
-          }
-        }
-      };
-
-      let extractedTasks = [];
-      try {
-        const result = await base44.integrations.Core.InvokeLLM({
-          prompt,
-          response_json_schema: taskSchema
-        });
-        extractedTasks = result.tasks || [];
-      } catch (e) {
-        console.error('Extraction failed for', course.name, e);
-      }
-
-      // Fallback: if AI returned nothing or too few tasks, build tasks client-side
-      const noInfo = !course.materials_text && !course.description;
-      if (extractedTasks.length === 0) {
-        extractedTasks = buildFallbackTasks(course);
-        if (noInfo) {
-          setFallbackCourses(prev => new Set([...prev, course.id]));
-        }
-      }
-
-      // Scale task hours so their sum matches the CP-based self-study budget.
-      // This ensures workload is always grounded in credit points, not AI guesses.
-      if (extractedTasks.length > 0) {
-        const rawSum = extractedTasks.reduce((s, t) => s + (t.estimated_hours || 2), 0);
-        if (rawSum > 0 && Math.abs(rawSum - selfStudyBudget) > selfStudyBudget * 0.1) {
-          const scaleFactor = selfStudyBudget / rawSum;
-          extractedTasks = extractedTasks.map(t => ({
-            ...t,
-            estimated_hours: Math.max(0.5, Math.round((t.estimated_hours || 2) * scaleFactor * 2) / 2),
-          }));
-        }
-      }
-
-      const created = [];
-      for (const t of extractedTasks) {
-        const toNull = (v) => !v || v === '' ? null : v;
-        const record = await base44.entities.StudyTask.create({
-          plan_id: planId,
-          course_id: course.id,
-          course_name: course.name,
-          title: t.title,
-          task_type: TASK_TYPES.includes(t.task_type) ? t.task_type : 'reading',
-          deadline: toNull(t.deadline),
-          estimated_hours: t.estimated_hours || 2,
-          priority: ['low', 'medium', 'high'].includes(t.priority) ? t.priority : 'medium',
-          suggested_phase: t.suggested_phase || '',
-          status: 'open',
-          confirmed: false,
-          target_date: toNull(t.target_date),
-          not_before_date: toNull(t.not_before_date),
-          target_week: t.target_week || null,
-          source_week_label: t.source_week_label || null,
-          related_course_event_date: toNull(t.related_course_event_date),
-          related_course_event_type: t.related_course_event_type || null,
-          exam_date: toNull(t.exam_date),
-          chapter_number: t.chapter_number || null,
-          topic_number: t.topic_number || null,
-          exercise_number: t.exercise_number || null,
-          assignment_number: t.assignment_number || null,
-          date_confidence: t.date_confidence || 'none',
-          source_text: t.source_text || null
-        });
-        created.push(record);
-      }
-
+      const { created, isFallback } = await extractSingleCourse(course, p, calHours, wb, false);
       newTasks[course.id] = created;
-      newCoverageStats[course.id] = { tasksCreated: created.length, tasksWithDates: created.filter((t) => t.target_date || t.target_week || t.deadline).length };
+      if (isFallback) newFallbacks.add(course.id);
     }
-
     setTasks(newTasks);
-    setCoverageStats(newCoverageStats);
+    setFallbackCourses(newFallbacks);
     setExtracted(true);
     setExtracting(false);
-    setExtractingCourse('');
   };
 
-  const handleReExtract = () => {
-    const hasExisting = Object.values(tasks).flat().length > 0;
-    if (hasExisting) {
-      setShowReExtractConfirm(true);
-    } else {
-      extractTasksForCourses(courses, false);
-    }
+  const handleReExtractCourse = async (courseId) => {
+    const course = courses.find(c => c.id === courseId);
+    if (!course || !plan) return;
+    const wb = workloadBreakdowns[courseId];
+    const { created, isFallback } = await extractSingleCourse(course, plan, calendarHoursByCourse, wb, true);
+    setTasks(prev => ({ ...prev, [courseId]: created }));
+    setFallbackCourses(prev => {
+      const next = new Set(prev);
+      isFallback ? next.add(courseId) : next.delete(courseId);
+      return next;
+    });
   };
 
   const updateTask = async (taskId, updates) => {
     await base44.entities.StudyTask.update(taskId, updates);
-    const courseId = Object.keys(tasks).find((cId) => tasks[cId].some((t) => t.id === taskId));
-    if (courseId) {
-      setTasks((prev) => ({ ...prev, [courseId]: prev[courseId].map((t) => t.id === taskId ? { ...t, ...updates } : t) }));
-    }
+    const courseId = Object.keys(tasks).find(cId => tasks[cId].some(t => t.id === taskId));
+    if (courseId) setTasks(prev => ({ ...prev, [courseId]: prev[courseId].map(t => t.id === taskId ? { ...t, ...updates } : t) }));
     setEditTask(null);
   };
 
   const deleteTask = async (taskId) => {
     await base44.entities.StudyTask.delete(taskId);
-    const courseId = Object.keys(tasks).find((cId) => tasks[cId].some((t) => t.id === taskId));
-    if (courseId) {
-      setTasks((prev) => ({ ...prev, [courseId]: prev[courseId].filter((t) => t.id !== taskId) }));
-    }
+    const courseId = Object.keys(tasks).find(cId => tasks[cId].some(t => t.id === taskId));
+    if (courseId) setTasks(prev => ({ ...prev, [courseId]: prev[courseId].filter(t => t.id !== taskId) }));
   };
 
   const addTask = async () => {
-    const courseId = addTaskForCourse || courses[activeCourse]?.id;
-    const course = courses.find(c => c.id === courseId);
+    const course = courses.find(c => c.id === addTaskForCourse);
     if (!course || !newTask.title.trim()) return;
     const record = await base44.entities.StudyTask.create({
       plan_id: planId, course_id: course.id, course_name: course.name,
       title: newTask.title, task_type: newTask.task_type,
       deadline: newTask.deadline || null, estimated_hours: Number(newTask.estimated_hours) || 2,
-      priority: newTask.priority, status: 'open', confirmed: false, date_confidence: 'none',
-      target_week: newTask.target_week || null,
+      priority: 'medium', status: 'open', confirmed: false, date_confidence: 'none',
+      target_week: newTask.target_week ? Number(newTask.target_week) : null,
     });
-    setTasks((prev) => ({ ...prev, [course.id]: [...(prev[course.id] || []), record] }));
-    setNewTask({ title: '', task_type: 'reading', deadline: '', estimated_hours: 2, priority: 'medium', target_week: '' });
+    setTasks(prev => ({ ...prev, [course.id]: [...(prev[course.id] || []), record] }));
+    setNewTask({ title: '', task_type: 'reading', deadline: '', estimated_hours: 2, target_week: '' });
     setShowAddTask(false);
     setAddTaskForCourse(null);
   };
@@ -444,15 +430,13 @@ Return JSON: { "tasks": [ ... ] }`;
       await base44.entities.StudyPlan.update(planId, { phase: 'generation', step: 7 });
       navigate(`/plan/${planId}/feasibility`);
     } catch (e) {
-      console.error(e);
       setConfirming(false);
     }
   };
 
-  const currentCourse = courses[activeCourse];
-  const currentTasks = currentCourse ? tasks[currentCourse.id] || [] : [];
-  const totalHours = Object.values(tasks).flat().reduce((sum, t) => sum + (t.estimated_hours || 0), 0);
-  const tasksWithDates = Object.values(tasks).flat().filter((t) => t.target_date || t.target_week || t.deadline).length;
+  const totalTasks = Object.values(tasks).flat().length;
+  const totalHours = Object.values(tasks).flat().reduce((s, t) => s + (t.estimated_hours || 0), 0);
+  const cpTotal = courses.reduce((s, c) => s + (c.credit_points || 0) * 30, 0);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
@@ -462,159 +446,125 @@ Return JSON: { "tasks": [ ... ] }`;
           <StepHeader
             icon={ListChecks}
             title="Task Extraction"
-            description="I'll analyze your course materials and extract study tasks with dates and weeks from your syllabus or lecture plan." />
-          
+            description="Tasks are generated based on your confirmed course structure and credit points. Review and edit each course before continuing." />
 
-          {!extracted && extracting &&
-          <div className="bg-white rounded-xl border border-blue-100 p-8 shadow-sm text-center mb-6">
+          {/* Loading state */}
+          {!extracted && extracting && (
+            <div className="bg-white rounded-xl border border-blue-100 p-8 shadow-sm text-center mb-6">
               <Loader2 className="w-10 h-10 animate-spin text-blue-500 mx-auto mb-3" />
-              {extractingCourse &&
-            <p className="text-xs font-semibold text-blue-500 uppercase tracking-wide mb-1">{extractingCourse}</p>
-            }
-              <p className="text-gray-700 font-medium">Extracting tasks from course material...</p>
-              <p className="text-sm text-gray-400 mt-1">Detecting chapters, exercises, assignments, quizzes, and deadlines.</p>
+              <p className="text-gray-700 font-medium">Extracting tasks from course materials...</p>
+              <p className="text-sm text-gray-400 mt-1">Analyzing course structure, chapters, assignments, and deadlines.</p>
             </div>
-          }
+          )}
 
-          {/* Re-extract confirmation dialog */}
-          {showReExtractConfirm &&
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 mb-6">
+          {/* Re-extract all confirmation */}
+          {showReExtractConfirm && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 mb-6">
               <div className="flex items-start gap-3">
                 <AlertTriangle className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" />
                 <div className="flex-1">
-                  <p className="font-semibold text-amber-800 mb-1">Replace existing tasks?</p>
-                  <p className="text-sm text-amber-700 mb-3">
-                    Re-extracting will delete all {Object.values(tasks).flat().length} existing tasks for this plan and create new ones. This cannot be undone.
-                  </p>
+                  <p className="font-semibold text-amber-800 mb-1">Replace all existing tasks?</p>
+                  <p className="text-sm text-amber-700 mb-3">This will delete all {totalTasks} tasks and re-extract from scratch.</p>
                   <div className="flex gap-2">
-                    <Button size="sm" className="bg-amber-600 hover:bg-amber-700" onClick={() => extractTasksForCourses(courses, true)}>
-                      Yes, delete and re-extract
+                    <Button size="sm" className="bg-amber-600 hover:bg-amber-700"
+                      onClick={() => extractAllCourses(courses, plan, calendarHoursByCourse, true)}>
+                      Yes, re-extract all
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => setShowReExtractConfirm(false)}>
-                      Cancel
-                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setShowReExtractConfirm(false)}>Cancel</Button>
                   </div>
                 </div>
               </div>
             </div>
-          }
+          )}
 
           {extracted && (
             <>
-              {/* Guidance banner */}
-              <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 mb-4 flex items-start gap-2">
+              {/* Summary bar */}
+              <div className="bg-white border border-blue-100 rounded-xl p-4 mb-5 flex flex-wrap gap-6 items-center justify-between shadow-sm">
+                <div className="flex gap-6">
+                  <div className="text-center">
+                    <p className="text-xl font-bold text-blue-700">{totalTasks}</p>
+                    <p className="text-xs text-gray-400">Tasks</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xl font-bold text-blue-700">{totalHours.toFixed(0)}h</p>
+                    <p className="text-xs text-gray-400">Task hours</p>
+                  </div>
+                  {cpTotal > 0 && (
+                    <div className="text-center">
+                      <p className="text-xl font-bold text-emerald-700">{cpTotal}h</p>
+                      <p className="text-xs text-gray-400">CP workload</p>
+                    </div>
+                  )}
+                  <div className="text-center">
+                    <p className="text-xl font-bold text-blue-700">{courses.length}</p>
+                    <p className="text-xs text-gray-400">Courses</p>
+                  </div>
+                </div>
+                <Button variant="outline" size="sm" onClick={() => setShowReExtractConfirm(true)} disabled={extracting}>
+                  <RefreshCw className="w-4 h-4 mr-1" /> Re-extract all
+                </Button>
+              </div>
+
+              {/* AI notice */}
+              <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 mb-5 flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" />
                 <p className="text-xs text-blue-800">
-                  Tasks were extracted by AI. Please check whether the weekly order, workload, deadlines, and task names make sense. You can edit, delete, or add tasks before continuing.
+                  Tasks were generated based on your confirmed course structure and credit points. Review each course below — edit, delete, or add tasks as needed before continuing.
                 </p>
               </div>
 
-              {/* Fallback notice per course */}
-              {fallbackCourses.size > 0 && courses.filter(c => fallbackCourses.has(c.id)).map(c => (
-                <div key={c.id} className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
-                  <p className="text-xs text-amber-800"><strong>{c.name}:</strong> {t('fallbackNotice')}</p>
-                </div>
+              {/* Per-course sections */}
+              {courses.map(course => (
+                <CourseTaskSection
+                  key={course.id}
+                  course={course}
+                  calendarHours={calendarHoursByCourse[course.id] || 0}
+                  courseTasks={tasks[course.id] || []}
+                  tasks={tasks}
+                  setTasks={setTasks}
+                  editTask={editTask}
+                  setEditTask={setEditTask}
+                  onSave={updateTask}
+                  onDelete={deleteTask}
+                  onAddTask={(cId) => { setAddTaskForCourse(cId); setShowAddTask(true); }}
+                  onReExtract={handleReExtractCourse}
+                  planStartDate={planStartDate}
+                  onBreakdownChange={(bd) => setWorkloadBreakdowns(prev => ({ ...prev, [course.id]: bd }))}
+                  isFallback={fallbackCourses.has(course.id)}
+                  isExtracting={extractingCourseId === course.id}
+                />
               ))}
 
-              {/* Summary bar */}
-              {(() => {
-                const cpTotal = courses.reduce((s, c) => s + (c.credit_points || 0) * 30, 0);
-                return (
-                  <div className="bg-white border border-blue-100 rounded-xl p-4 mb-5 flex flex-wrap gap-6 items-center justify-between">
-                    <div className="flex gap-6">
-                      <div className="text-center">
-                        <p className="text-2xl font-bold text-blue-700">{Object.values(tasks).flat().length}</p>
-                        <p className="text-xs text-gray-500">Tasks</p>
-                      </div>
-                      <div className="text-center">
-                        <p className="text-2xl font-bold text-blue-700">{totalHours.toFixed(0)}h</p>
-                        <p className="text-xs text-gray-500">Task hours</p>
-                      </div>
-                      {cpTotal > 0 && (
-                        <div className="text-center">
-                          <p className="text-2xl font-bold text-emerald-700">{cpTotal}h</p>
-                          <p className="text-xs text-gray-500">CP workload</p>
-                        </div>
-                      )}
-                      <div className="text-center">
-                        <p className="text-2xl font-bold text-blue-700">{courses.length}</p>
-                        <p className="text-xs text-gray-500">Courses</p>
-                      </div>
-                    </div>
-                    <Button variant="outline" size="sm" onClick={handleReExtract} disabled={extracting}>
-                      {extracting ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <RefreshCw className="w-4 h-4 mr-1" />}
-                      Re-extract all
-                    </Button>
-                  </div>
-                );
-              })()}
-
-              {/* Workload breakdowns — one per course, collapsible */}
-              <div className="mb-5 space-y-2">
-                {courses.map(c => (
-                  <WorkloadBreakdown
-                    key={c.id}
-                    course={c}
-                    calendarHours={calendarHoursByCourse[c.id] || 0}
-                    onBreakdownChange={(bd) =>
-                      setWorkloadBreakdowns(prev => ({ ...prev, [c.id]: bd }))
-                    }
-                  />
-                ))}
-              </div>
-
-              {/* Weekly task list */}
-              <WeeklyTaskList
-                tasks={tasks}
-                courses={courses}
-                editTask={editTask}
-                setEditTask={setEditTask}
-                onSave={updateTask}
-                onDelete={deleteTask}
-                setTasks={setTasks}
-                onAddTask={(courseId) => { setAddTaskForCourse(courseId); setShowAddTask(true); }}
-                planStartDate={planStartDate}
-              />
-
-              {/* Add task form (global, triggered from weekly list) */}
-              {showAddTask && (
+              {/* Add task modal */}
+              {showAddTask && addTaskForCourse && (
                 <div className="mt-4 bg-white rounded-xl border border-blue-200 p-4 shadow-sm space-y-3">
                   <p className="text-sm font-semibold text-gray-700">
-                    Add task{addTaskForCourse ? ` — ${courses.find(c => c.id === addTaskForCourse)?.name}` : ''}
+                    Add task — {courses.find(c => c.id === addTaskForCourse)?.name}
                   </p>
                   <Input value={newTask.title} onChange={e => setNewTask(p => ({ ...p, title: e.target.value }))} placeholder="Task title" />
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     <Select value={newTask.task_type} onValueChange={v => setNewTask(p => ({ ...p, task_type: v }))}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>{TASK_TYPES.map(tt => <SelectItem key={tt} value={tt}>{tt.replace('_', ' ')}</SelectItem>)}</SelectContent>
+                      <SelectContent>{TASK_TYPES.map(tt => <SelectItem key={tt} value={tt}>{TYPE_LABELS[tt]}</SelectItem>)}</SelectContent>
                     </Select>
                     <Input type="number" value={newTask.estimated_hours} onChange={e => setNewTask(p => ({ ...p, estimated_hours: e.target.value }))} placeholder="Hours" />
                     <Input type="number" value={newTask.target_week} onChange={e => setNewTask(p => ({ ...p, target_week: e.target.value }))} placeholder="Week #" />
                     <Input type="date" value={newTask.deadline} onChange={e => setNewTask(p => ({ ...p, deadline: e.target.value }))} />
                   </div>
                   <div className="flex gap-2">
-                    <Button size="sm" onClick={addTask} disabled={!newTask.title.trim()}><Plus className="w-4 h-4 mr-1" /> Add</Button>
+                    <Button size="sm" onClick={addTask} disabled={!newTask.title.trim()}><Plus className="w-4 h-4 mr-1" />Add</Button>
                     <Button size="sm" variant="ghost" onClick={() => { setShowAddTask(false); setAddTaskForCourse(null); }}>Cancel</Button>
                   </div>
                 </div>
-              )}
-
-              {!showAddTask && (
-                <button
-                  onClick={() => { setAddTaskForCourse(null); setShowAddTask(true); }}
-                  className="w-full mt-4 py-3 border border-dashed border-blue-200 rounded-xl text-sm text-blue-500 hover:bg-blue-50 transition-colors"
-                >
-                  <Plus className="w-4 h-4 inline mr-1" /> Add task manually
-                </button>
               )}
 
               <div className="flex justify-between items-center mt-6">
                 <Button variant="ghost" onClick={() => navigate(`/plan/${planId}/courses`)}>
                   <ArrowLeft className="w-4 h-4 mr-1" /> Back
                 </Button>
-                <Button onClick={confirmAll} disabled={confirming} className="bg-blue-600 hover:bg-blue-700">
-                  {confirming ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Confirming...</> : <>Confirm & continue <ArrowRight className="w-4 h-4 ml-1" /></>}
+                <Button onClick={confirmAll} disabled={confirming || totalTasks === 0} className="bg-blue-600 hover:bg-blue-700">
+                  {confirming ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" />Confirming...</> : <>Confirm & continue <ArrowRight className="w-4 h-4 ml-1" /></>}
                 </Button>
               </div>
             </>
@@ -622,10 +572,11 @@ Return JSON: { "tasks": [ ... ] }`;
         </motion.div>
       </div>
       <ContextChat phase="tasks" planId={planId} suggestions={[
-      "How are task hours estimated?",
-      "Why does a task have a target date?",
-      "Can I change the deadline?"]
-      } />
-    </div>);
-
+        "Why is this course showing generic tasks?",
+        "How are task hours calculated from credit points?",
+        "How do I add assignments with deadlines?",
+        "Why is thesis not showing exercises?"
+      ]} />
+    </div>
+  );
 }
