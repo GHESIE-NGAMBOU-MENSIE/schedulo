@@ -102,7 +102,7 @@ function TaskRow({ task, onEdit, onDelete, isEditing, onSave, onCancelEdit, task
           <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{task.estimated_hours}h</span>
           {task.deadline && <span className="text-red-500 flex items-center gap-1"><Calendar className="w-3 h-3" />Due {formatDate(task.deadline)}</span>}
           {task.target_date && !task.deadline && <span className="text-blue-500 flex items-center gap-1"><Calendar className="w-3 h-3" />By {formatDate(task.target_date)}</span>}
-          {task.exam_date && <span className="text-red-600 font-medium">🎓 Exam {formatDate(task.exam_date)}</span>}
+          {task.exam_date && <span className="text-red-600 font-medium hidden">🎓 Exam {formatDate(task.exam_date)}</span>}
           {task.source_text && <span className="text-gray-300 italic truncate max-w-[200px]" title={task.source_text}>"{task.source_text.slice(0, 60)}"</span>}
         </div>
       </div>
