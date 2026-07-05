@@ -556,12 +556,12 @@ export default function TaskExtraction() {
               </div>
 
               {/* AI notice */}
-              <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 mb-5 flex items-start gap-2 hidden">
-                <AlertCircle className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" />
-                <p className="text-xs text-blue-800 hidden">
-                  Tasks were generated based on your confirmed course structure and credit points. Review each course below — edit, delete, or add tasks as needed before continuing.
-                </p>
-              </div>
+              
+
+
+
+
+            
 
               {/* Course tabs */}
               {courses.length > 1 &&
