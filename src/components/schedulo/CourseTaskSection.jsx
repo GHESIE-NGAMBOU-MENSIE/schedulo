@@ -188,10 +188,10 @@ export default function CourseTaskSection({
           </div>
           <div>
             <p className="font-semibold text-gray-900 text-base">{course.name}</p>
-            <p className="text-xs text-gray-400 mt-0.5 hidden">
-              {cp} CP · {totalHours}h expected · {courseTasks.length} tasks · {taskHoursSum.toFixed(0)}h extracted
-              {calendarHours > 0 && <span className="text-violet-500 ml-1">· {Math.round(calendarHours)}h calendar</span>}
-            </p>
+            
+
+
+            
           </div>
         </div>
         <div className="flex items-center gap-2 ml-4 flex-shrink-0">
