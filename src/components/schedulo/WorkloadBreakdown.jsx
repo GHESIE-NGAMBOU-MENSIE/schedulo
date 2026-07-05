@@ -238,7 +238,7 @@ export default function WorkloadBreakdown({ course, calendarHours = 0, onBreakdo
               <div key={key} className="flex items-center gap-2.5">
                   <div className={`w-2 h-2 rounded-full flex-shrink-0 ${meta.color}`} />
                   <span className="flex-1 text-xs text-gray-700">{meta.label}</span>
-                  {isFixed && <span className="text-xs text-violet-500 italic hidden">calendar</span>}
+                  
                   {editing && !isFixed ?
                 <Input type="number" min={0} max={totalHours}
                 value={draft[key] ?? hours}
