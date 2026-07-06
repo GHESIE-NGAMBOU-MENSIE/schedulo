@@ -256,12 +256,21 @@ export default function PlanGeneration() {
     return scheduledTasks.some(t => t.scheduled_date === getLocalDateStr(d));
   });
 
+  const [confirming, setConfirming] = useState(false);
+
   const confirmPlan = async () => {
-    await base44.entities.StudyPlan.update(planId, { status: 'active', phase: 'active', step: 9 });
-    for (const t of scheduledTasks) {
-      await base44.entities.StudyTask.update(t.id, { confirmed: true });
+    setConfirming(true);
+    try {
+      await base44.entities.StudyPlan.update(planId, { status: 'active', phase: 'active', step: 9 });
+      await base44.entities.StudyTask.updateMany(
+        { plan_id: planId, status: 'open' },
+        { $set: { confirmed: true } }
+      );
+      navigate(`/plan/${planId}/active`);
+    } catch (e) {
+      console.error('Confirm failed:', e);
+      setConfirming(false);
     }
-    navigate(`/plan/${planId}/active`);
   };
 
   // Per-course color palette (Tailwind literal classes)
@@ -881,8 +890,9 @@ export default function PlanGeneration() {
                     <RotateCcw className="w-4 h-4 mr-1" /> Re-generate
                   </Button>
                 </div>
-                <Button onClick={confirmPlan} className="bg-emerald-600 hover:bg-emerald-700" disabled={scheduledTasks.length === 0}>
-                  <CheckCircle className="w-4 h-4 mr-1" /> Confirm and activate plan
+                <Button onClick={confirmPlan} className="bg-emerald-600 hover:bg-emerald-700" disabled={scheduledTasks.length === 0 || confirming}>
+                  {confirming ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-1" />}
+                  {confirming ? 'Activating...' : 'Confirm and activate plan'}
                 </Button>
               </div>
             </>
