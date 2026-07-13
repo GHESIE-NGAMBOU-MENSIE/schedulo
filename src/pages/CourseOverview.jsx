@@ -21,8 +21,7 @@ const COURSE_TYPES = [
 { key: 'seminar', label: 'Seminar' },
 { key: 'project_course', label: 'Project course' },
 { key: 'lab_course', label: 'Lab course' },
-{ key: 'bachelor_thesis', label: 'Bachelor Thesis' },
-{ key: 'master_thesis', label: 'Master Thesis' },
+{ key: 'bachelor_thesis', label: 'Thesis' },
 { key: 'other', label: 'Other' }];
 
 

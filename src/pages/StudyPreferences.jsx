@@ -25,6 +25,7 @@ export default function StudyPreferences() {
   const navigate = useNavigate();
   const [schedule, setSchedule] = useState(defaultSchedule());
   const [maxHours, setMaxHours] = useState(6);
+  const [maxBlockHours, setMaxBlockHours] = useState(2);
   const [breakDuration, setBreakDuration] = useState(15);
 
   useEffect(() => {
@@ -52,6 +53,7 @@ export default function StudyPreferences() {
         setSchedule(migrated);
       }
       if (p.preferences?.max_hours) setMaxHours(p.preferences.max_hours);
+      if (p.preferences?.max_block_hours) setMaxBlockHours(p.preferences.max_block_hours);
       if (p.preferences?.break_duration) setBreakDuration(p.preferences.break_duration);
     };
     load();
@@ -69,6 +71,7 @@ export default function StudyPreferences() {
       preferences: {
         schedule,
         max_hours: maxHours,
+        max_block_hours: maxBlockHours,
         break_duration: breakDuration
       },
       step: 3,
@@ -166,6 +169,22 @@ export default function StudyPreferences() {
                 className="flex-1" />
               
               <span className="text-2xl font-bold text-blue-600 w-16 text-center">{maxHours}h</span>
+            </div>
+          </div>
+
+          {/* Max block hours */}
+          <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-6">
+            <h3 className="font-semibold text-gray-900 mb-1">Max hours per study block</h3>
+            <p className="text-sm text-gray-400 mb-3">Tasks longer than this will be automatically split into shorter blocks.</p>
+            <div className="flex items-center gap-4">
+              <Slider
+                value={[maxBlockHours]}
+                onValueChange={(v) => setMaxBlockHours(v[0])}
+                min={1}
+                max={6}
+                step={0.5}
+                className="flex-1" />
+              <span className="text-2xl font-bold text-indigo-600 w-16 text-center">{maxBlockHours}h</span>
             </div>
           </div>
 

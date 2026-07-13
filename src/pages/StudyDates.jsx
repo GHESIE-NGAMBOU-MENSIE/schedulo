@@ -182,6 +182,8 @@ export default function StudyDates() {
     load();
   }, [planId]);
 
+  const [calendarFileName, setCalendarFileName] = useState('');
+
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -189,17 +191,18 @@ export default function StudyDates() {
     try {
       const text = await file.text();
       const parsed = parseICS(text, startDate || '2000-01-01', endDate || '2099-12-31');
-      setEvents((prev) => {
-        // Merge: avoid duplicate names from recurring
-        const existingNames = new Set(prev.filter((e) => e.is_recurring).map((e) => e.name));
-        const newEvents = parsed.filter((e) => !e.is_recurring || !existingNames.has(e.name));
-        return [...prev, ...newEvents];
-      });
+      setCalendarFileName(file.name);
+      setEvents(parsed);
     } catch (err) {
       console.error(err);
     }
     setUploading(false);
     e.target.value = '';
+  };
+
+  const handleDeleteCalendar = () => {
+    setEvents([]);
+    setCalendarFileName('');
   };
 
   const validateManual = () => {
@@ -269,18 +272,24 @@ export default function StudyDates() {
     });
 
     // Deduplicate courses semantically before creating them
-    // Strip common suffixes/prefixes (Vorlesung, Lecture, Course, Übung, Exercise, Lab, Tutorial, Seminar)
-    const STRIP_WORDS = /\b(vorlesung|lecture|course|übung|ubung|exercise|lab|praktikum|tutorial|seminar|kurs|class)\b/gi;
+    // Strip common suffixes/prefixes and derive a clean canonical name
+    const STRIP_WORDS = /\b(vorlesung|lecture|course|übung|ubung|exercise|exercises|lab|praktikum|tutorial|seminar|kurs|class|module|unit|introduction|intro)\b/gi;
     const normalize = (name) => name.replace(STRIP_WORDS, '').replace(/[-_/\\]+/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+    // Get the clean display name by stripping type words and title-casing
+    const toCanonical = (name) => {
+      const stripped = name.replace(STRIP_WORDS, '').replace(/[-_/\\]+/g, ' ').replace(/\s+/g, ' ').trim();
+      return stripped || name;
+    };
 
     const rawCourseNames = events.filter((e) => e.is_course).map((e) => e.name);
-    // Group by normalized key — keep the shortest (cleanest) name as canonical
-    const canonicalMap = new Map(); // normalizedKey -> canonical name
+    // Group by normalized key — keep the shortest clean canonical name
+    const canonicalMap = new Map(); // normalizedKey -> canonical display name
     for (const name of rawCourseNames) {
       const key = normalize(name);
       if (!key) continue;
-      if (!canonicalMap.has(key) || name.length < canonicalMap.get(key).length) {
-        canonicalMap.set(key, name);
+      const canonical = toCanonical(name);
+      if (!canonicalMap.has(key) || canonical.length < canonicalMap.get(key).length) {
+        canonicalMap.set(key, canonical);
       }
     }
     const dedupedNames = [...canonicalMap.values()];
@@ -358,19 +367,32 @@ export default function StudyDates() {
           <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-6">
             <h3 className="font-semibold text-gray-900 mb-1">Import your calendar</h3>
             
-            <div className="flex flex-wrap gap-3">
-              <label className="cursor-pointer">
-                <input type="file" accept=".ics" onChange={handleFileUpload} className="hidden" />
-                <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium">
-                  {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileUp className="w-4 h-4" />}
-                  {uploading ? 'Parsing...' : 'Upload .ics file'}
+            <div className="flex flex-wrap gap-3 items-center">
+              {!calendarFileName ? (
+                <label className="cursor-pointer">
+                  <input type="file" accept=".ics" onChange={handleFileUpload} className="hidden" />
+                  <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium">
+                    {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileUp className="w-4 h-4" />}
+                    {uploading ? 'Parsing...' : 'Upload .ics file'}
+                  </div>
+                </label>
+              ) : (
+                <div className="flex items-center gap-2 px-4 py-2 bg-green-50 border border-green-200 rounded-lg text-sm">
+                  <FileUp className="w-4 h-4 text-green-600" />
+                  <span className="text-green-700 font-medium">{calendarFileName}</span>
+                  <button
+                    onClick={handleDeleteCalendar}
+                    className="ml-1 text-red-400 hover:text-red-600 transition-colors"
+                    title="Remove calendar and all extracted events"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
-              </label>
+              )}
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => {setEditIdx(null);setManualEvent(emptyManual);setManualErrors({});setShowManual(true);}}>
-                
                 <Plus className="w-4 h-4 mr-1" /> Add event manually
               </Button>
             </div>

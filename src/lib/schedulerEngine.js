@@ -238,7 +238,7 @@ function tryPlace(dateKey, windowStart, windowEnd, maxMinutes, busyBlocks, study
   const usedMinutes = studyBlocks.reduce((sum, b) => sum + (b.end - b.start), 0);
   if (usedMinutes >= maxMinutes) return null;
 
-  const actualDuration = Math.min(durationMinutes, maxMinutes - usedMinutes, 180);
+  const actualDuration = Math.min(durationMinutes, maxMinutes - usedMinutes);
   if (actualDuration < 30) return null;
 
   const freeBlocks = computeFreeBlocks(windowStart, windowEnd, busyBlocks, studyBlocks, breakDuration);
@@ -741,10 +741,11 @@ export function scheduleTasksEngine(tasks, calEvents, courses, prefs, startDate,
       const latestAllowedDate = latestAllowed ? parseDate(latestAllowed) : null;
       const preferredSchedDate = entry.preferredScheduleDate ? parseDate(entry.preferredScheduleDate) : null;
 
-      // Split tasks > 3h into 3h blocks (cap at 4 blocks max to avoid infinite scheduling)
+      // Split tasks that exceed max block duration (from user preferences, default 3h)
+      const maxBlockMinutes = Math.round((prefs.max_block_hours || 3) * 60);
       const blockDurations = [];
       let rem = Math.min(durationMinutes, 720); // cap at 12h total
-      while (rem > 0) { blockDurations.push(Math.min(rem, 180)); rem -= 180; }
+      while (rem > 0) { blockDurations.push(Math.min(rem, maxBlockMinutes)); rem -= maxBlockMinutes; }
 
       let lastPlacedDate = null;
 

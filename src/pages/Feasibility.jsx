@@ -127,35 +127,22 @@ export default function Feasibility() {
     const issues = [];
     const suggestions = [];
 
-    if (totalRemainingWorkload > totalAvailableHours * 1.1) {
+    if (totalRemainingWorkload > totalAvailableHours) {
       status = 'not_feasible';
       const gap = Math.round(totalRemainingWorkload - totalAvailableHours);
       issues.push(`Your courses require ~${Math.round(totalRemainingWorkload)}h of self-study, but your availability is ~${Math.round(totalAvailableHours)}h — a gap of ${gap}h.`);
       suggestions.push('Increase your daily study window or add more study days.');
       suggestions.push('Reduce no-study days where possible.');
       suggestions.push('Check if any course CPs can be reduced or deferred.');
-    } else if (totalRemainingWorkload > totalAvailableHours * 0.85) {
-      status = 'warning';
-      issues.push('Your workload is close to your maximum capacity. There is little buffer for unexpected delays or illness.');
-      suggestions.push('Try to start studying a few days earlier than planned.');
-      suggestions.push('Prioritize exam preparation and deadline tasks.');
-    }
-
-    if (hoursPerWeek > weeklyAvailableHours) {
-      if (status === 'feasible') status = 'warning';
-      issues.push(`Average weekly self-study load (${hoursPerWeek.toFixed(1)}h) exceeds your available study hours per week (${weeklyAvailableHours.toFixed(1)}h).`);
-      suggestions.push('Increase your daily study window or add more study days per week.');
     }
 
     if (deadlineIssues.length > 0) {
-      if (status === 'feasible') status = 'warning';
       issues.push(...deadlineIssues);
       suggestions.push('Prioritize tasks with the closest deadlines first.');
     }
 
     const missingExam = coursesWithMeta.filter(c => !c.examDate && c.examType !== 'none');
     if (missingExam.length > 0) {
-      if (status === 'feasible') status = 'warning';
       issues.push(`No exam date set for: ${missingExam.map(c => c.name).join(', ')}. Exam preparation timing may be unreliable.`);
       suggestions.push('Add exam dates in course details for more accurate planning.');
     }
@@ -185,7 +172,6 @@ export default function Feasibility() {
 
   const statusConfig = {
     feasible: { icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-200', label: 'Feasible', desc: 'Your study plan looks good! The workload fits within your available time.' },
-    warning: { icon: AlertTriangle, color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-200', label: 'Warning', desc: 'Your plan is possible but tight. Consider the suggestions below.' },
     not_feasible: { icon: XCircle, color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-200', label: 'Not Feasible', desc: 'Your workload exceeds your available time. You need to make adjustments.' },
   };
 
@@ -328,7 +314,7 @@ export default function Feasibility() {
             <Button variant="ghost" onClick={() => navigate(`/plan/${planId}/tasks`)}>
               <ArrowLeft className="w-4 h-4 mr-1" /> Back
             </Button>
-            <Button onClick={() => navigate(`/plan/${planId}/generate`)} disabled={!result} className="bg-blue-600 hover:bg-blue-700">
+            <Button onClick={() => navigate(`/plan/${planId}/generate`)} className="bg-blue-600 hover:bg-blue-700">
               Generate study plan <ArrowRight className="w-4 h-4 ml-1" />
             </Button>
           </div>
