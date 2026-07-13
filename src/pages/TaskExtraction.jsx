@@ -529,7 +529,7 @@ export default function TaskExtraction() {
           {extracted &&
           <>
               {/* Summary bar */}
-              <div className="bg-white border border-blue-100 rounded-xl p-4 mb-5 flex flex-wrap gap-6 items-center justify-between shadow-sm">
+              <div className="bg-white border border-blue-100 rounded-xl p-4 mb-5 flex flex-wrap gap-6 items-center justify-between shadow-sm hidden">
                 <div className="flex gap-6">
                   <div className="text-center">
                     <p className="text-xl font-bold text-blue-700">{totalTasks}</p>
