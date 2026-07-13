@@ -529,31 +529,31 @@ export default function TaskExtraction() {
           {extracted &&
           <>
               {/* Summary bar */}
-              <div className="bg-white border border-blue-100 rounded-xl p-4 mb-5 flex flex-wrap gap-6 items-center justify-between shadow-sm hidden">
-                <div className="flex gap-6">
-                  <div className="text-center">
-                    <p className="text-xl font-bold text-blue-700">{totalTasks}</p>
-                    <p className="text-xs text-gray-400">Tasks</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-xl font-bold text-blue-700">{totalHours.toFixed(0)}h</p>
-                    <p className="text-xs text-gray-400">Task hours</p>
-                  </div>
-                  {cpTotal > 0 &&
-                <div className="text-center">
-                      <p className="text-xl font-bold text-emerald-700">{cpTotal}h</p>
-                      <p className="text-xs text-gray-400">CP workload</p>
-                    </div>
-                }
-                  <div className="text-center">
-                    <p className="text-xl font-bold text-blue-700">{courses.length}</p>
-                    <p className="text-xs text-gray-400">Courses</p>
-                  </div>
-                </div>
-                <Button variant="outline" size="sm" onClick={() => setShowReExtractConfirm(true)} disabled={extracting}>
-                  <RefreshCw className="w-4 h-4 mr-1" /> Re-extract all
-                </Button>
-              </div>
+              
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            
 
               {/* AI notice */}
               
