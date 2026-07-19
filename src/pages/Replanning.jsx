@@ -412,6 +412,24 @@ INSTRUCTION: You MUST include ALL tasks listed above in the "updates" array of y
         ? buildWeekContext(isNextWeek ? nextWeekDates : visibleWeekDates)
         : '';
 
+      // ── Extract blocked dates from the user message (enforced in code) ──
+      // Detect phrases like "can't study on Wednesday", "not available on Wednesday",
+      // "no study on Wednesday", "cannot study this day", "I can't study this week"
+      const blockedDates = [];
+      const isUnavailabilityMsg = /\b(can'?t|cannot|can not|not available|no study|no studying|unable|don'?t want to study|won'?t be (?:able to )?study)\b/i.test(lowerText)
+        || /\b(blocked|unavailable|off|away)\b/i.test(lowerText);
+      if (isUnavailabilityMsg) {
+        if (isWeekLevelRequest(text) || isThisWeek) {
+          // Block the entire visible week
+          blockedDates.push(...visibleWeekDates.map(d => getLocalDateStr(d)));
+        } else if (isNextWeek) {
+          blockedDates.push(...nextWeekDates.map(d => getLocalDateStr(d)));
+        } else if (resolvedDay) {
+          // Block the single resolved weekday
+          blockedDates.push(resolvedDay.date);
+        }
+      }
+
       // Week-level sequence analysis
       const isWeekRequest = isWeekLevelRequest(text) || isThisWeek;
       let sequenceContext = '';
@@ -473,6 +491,7 @@ RULES — CRITICAL:
 7. NEVER output "no_change" if the CALENDAR STATE or SEQUENCE ANALYSIS section lists tasks for the affected date(s).
 8. SEQUENCE ORDER: When shifting sequential tasks (readings, exercises, chapters), you MUST shift the entire course chain together. Never leave a later chapter scheduled before an earlier one.
 9. COMMITMENT CHANGES: If the student wants to modify a calendar commitment (e.g. "move my work shift from Monday to Wednesday", "delete my gym session"), use the "commitment_change" response type. The system will automatically detect conflicts with study tasks and reschedule them.
+10. BLOCKED DATES: If a "HARD BLOCKED DATES" section is present above, you MUST NOT propose any task on those dates. Move ALL tasks currently on blocked dates to other days. Never propose the same date/time slot as the task's original slot — always propose a real change.
 
 CURRENTLY VISIBLE CALENDAR WEEK: ${visibleWeekLabel}
 Resolved weekday dates:
@@ -492,6 +511,7 @@ ${(plan?.calendar_events || []).filter(e => !e.is_course).map(e => `- "${e.name}
 ${dayContext ? `\n${dayContext}\n` : ''}
 ${weekContext ? `\nWEEK TASK SUMMARY: ${weekContext}\n` : ''}
 ${sequenceContext ? `\n${sequenceContext}\n` : ''}
+${blockedDates.length > 0 ? `\nHARD BLOCKED DATES (no study tasks may be scheduled on these dates under any circumstance):\n${blockedDates.map(d => `- ${d}`).join('\n')}\n` : ''}
 
 STUDY PREFERENCES:
 Study days: ${(prefs.preferred_days || []).join(', ')}
@@ -594,7 +614,7 @@ IMPORTANT: Include ALL [MUST MOVE] and [MUST FOLLOW] tasks from the SEQUENCE ANA
         setClarification({ question: result.question, options: opts, originalText: text });
       } else if (result.type === 'commitment_change') {
         // Handle commitment (calendar event) modifications
-        await handleCommitmentChange(result);
+        await handleCommitmentChange(result, blockedDates);
       } else if (result.type === 'proposal') {
         // Validate each proposed move against constraints before showing
         const prefs = plan?.preferences || {};
@@ -603,6 +623,49 @@ IMPORTANT: Include ALL [MUST MOVE] and [MUST FOLLOW] tasks from the SEQUENCE ANA
         for (const u of (result.updates || [])) {
           const task = tasks.find(t => t.id === u.task_id);
           if (!task) continue;
+
+          // ── Same-slot rejection: AI proposed the exact same slot as the original ──
+          const isSameSlot = task.scheduled_date === u.scheduled_date
+            && task.scheduled_start === u.scheduled_start
+            && task.scheduled_end === u.scheduled_end;
+          if (isSameSlot) {
+            const [eh, em] = (task.scheduled_end || '10:00').split(':').map(Number);
+            const [sh, sm] = (task.scheduled_start || '09:00').split(':').map(Number);
+            const duration = (eh * 60 + em) - (sh * 60 + sm);
+            const alternatives = findAlternativeSlots({
+              newDate: u.scheduled_date,
+              duration,
+              task,
+              allTasks: tasks,
+              busyMap: expandedBusyMap,
+              prefs,
+              planStart: plan?.start_date,
+              planEnd: plan?.end_date,
+              blockedDates,
+            });
+            if (alternatives.length > 0) {
+              const slot = alternatives[0];
+              autoResolved.push({
+                task_id: u.task_id,
+                original_date: u.scheduled_date,
+                original_start: u.scheduled_start,
+                original_end: u.scheduled_end,
+                new_date: slot.date,
+                new_start: slot.start,
+                new_end: slot.end,
+                reason: 'AI proposed the same slot — moved to a real alternative',
+              });
+              u.scheduled_date = slot.date;
+              u.scheduled_start = slot.start;
+              u.scheduled_end = slot.end;
+              u.reason = `${u.reason} → auto-resolved (same-slot rejected, moved to ${slot.date} ${slot.start}–${slot.end})`;
+            } else {
+              conflicts.push({ task_id: u.task_id, title: task.title, reason: 'AI proposed the same slot and no alternative was found.' });
+            }
+            continue;
+          }
+
+          // ── Full validation including blocked dates ──
           const validation = validateSlot({
             newDate: u.scheduled_date,
             newStart: u.scheduled_start,
@@ -613,9 +676,10 @@ IMPORTANT: Include ALL [MUST MOVE] and [MUST FOLLOW] tasks from the SEQUENCE ANA
             prefs,
             planStart: plan?.start_date,
             planEnd: plan?.end_date,
+            blockedDates,
           });
           if (!validation.valid) {
-            // Auto-find a conflict-free alternative slot
+            // Auto-find a conflict-free alternative slot, excluding blocked dates
             const [eh, em] = (u.scheduled_end || '10:00').split(':').map(Number);
             const [sh, sm] = (u.scheduled_start || '09:00').split(':').map(Number);
             const duration = (eh * 60 + em) - (sh * 60 + sm);
@@ -628,6 +692,7 @@ IMPORTANT: Include ALL [MUST MOVE] and [MUST FOLLOW] tasks from the SEQUENCE ANA
               prefs,
               planStart: plan?.start_date,
               planEnd: plan?.end_date,
+              blockedDates,
             });
             if (alternatives.length > 0) {
               const slot = alternatives[0];
@@ -672,7 +737,7 @@ IMPORTANT: Include ALL [MUST MOVE] and [MUST FOLLOW] tasks from the SEQUENCE ANA
   };
 
   // ── Handle commitment (calendar event) changes ────────────────────────────
-  const handleCommitmentChange = async (result) => {
+  const handleCommitmentChange = async (result, blockedDates = []) => {
     const changes = result.commitment_changes || [];
     if (changes.length === 0) {
       setMessages(prev => [...prev, { role: 'assistant', content: result.message || 'I could not detect any commitment changes to make.' }]);
@@ -738,6 +803,7 @@ IMPORTANT: Include ALL [MUST MOVE] and [MUST FOLLOW] tasks from the SEQUENCE ANA
           prefs,
           planStart: plan?.start_date,
           planEnd: plan?.end_date,
+          blockedDates,
         });
         if (alternatives.length > 0) {
           const slot = alternatives[0];

@@ -45,14 +45,20 @@ const JS_DAY_TO_NAME = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 
  * @param {string}  params.planStart    - "YYYY-MM-DD"
  * @param {string}  params.planEnd      - "YYYY-MM-DD"
  * @param {string|null} params.latestAllowedDate - pre-computed latest allowed date (optional)
+ * @param {string[]} params.blockedDates - dates that are fully unavailable (no study allowed at all)
  */
-export function validateSlot({ newDate, newStart, newEnd, task, allTasks, busyMap, prefs, planStart, planEnd, latestAllowedDate }) {
+export function validateSlot({ newDate, newStart, newEnd, task, allTasks, busyMap, prefs, planStart, planEnd, latestAllowedDate, blockedDates }) {
   const newStartMin = toMin(newStart);
   const newEndMin = toMin(newEnd);
   const dayName = JS_DAY_TO_NAME[parseDate(newDate)?.getDay()];
   const schedule = prefs?.schedule || {};
   const dayPrefs = schedule[dayName] || {};
   const maxHoursPerDay = (prefs?.max_hours || 6) * 60; // minutes
+
+  // 0. Blocked date (hard block — no study at all on this date)
+  if (blockedDates && blockedDates.includes(newDate)) {
+    return { valid: false, reason: `This date (${newDate}) is blocked — the student said they cannot study on this day.` };
+  }
 
   // 1. Outside study period
   if (planStart && newDate < planStart) return { valid: false, reason: `This date is before your study period starts (${planStart}).` };
@@ -116,10 +122,11 @@ export function validateSlot({ newDate, newStart, newEnd, task, allTasks, busyMa
  *
  * @returns {Array<{date, start, end, label}>}
  */
-export function findAlternativeSlots({ newDate, duration, task, allTasks, busyMap, prefs, planStart, planEnd, latestAllowedDate, limit = 5 }) {
+export function findAlternativeSlots({ newDate, duration, task, allTasks, busyMap, prefs, planStart, planEnd, latestAllowedDate, blockedDates, limit = 5 }) {
   const schedule = prefs?.schedule || {};
   const maxHoursPerDay = (prefs?.max_hours || 6) * 60;
   const slots = [];
+  const blockedSet = new Set(blockedDates || []);
 
   // Search window: ±14 days from newDate, clamped to plan period and deadline
   const searchStart = planStart && newDate < planStart ? planStart : (addDays(newDate, -14) || newDate);
@@ -144,6 +151,8 @@ export function findAlternativeSlots({ newDate, duration, task, allTasks, busyMa
 
   for (const dateStr of candidates) {
     if (slots.length >= limit) break;
+    // Hard-blocked dates: never return a slot on these dates
+    if (blockedSet.has(dateStr)) continue;
     const dayName = JS_DAY_TO_NAME[parseDate(dateStr)?.getDay()];
     const dayPrefs = schedule[dayName] || {};
     if (dayPrefs.noStudy) continue;
