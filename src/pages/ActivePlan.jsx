@@ -38,8 +38,8 @@ export default function ActivePlan() {
       ]);
       setPlan(p);
       setTasks(t);
-      setCourses(c);
-      const { busy } = buildBusyMapPublic(p.calendar_events || [], c, p.start_date, p.end_date);
+      setCourses(courses);
+      const { busy } = buildBusyMapPublic(p.calendar_events || [], courses, p.start_date, p.end_date);
       setExpandedBusyMap(busy);
 
       // Jump to the week containing the first upcoming (non-completed) scheduled task,

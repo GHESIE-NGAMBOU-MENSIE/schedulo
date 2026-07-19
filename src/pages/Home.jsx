@@ -146,11 +146,11 @@ export default function Home() {
                         <button onClick={() => deletePlan(plan.id)} className="p-2 opacity-0 group-hover:opacity-100 hover:bg-red-50 rounded-lg transition-all">
                           <Trash2 className="w-4 h-4 text-red-400" />
                         </button>
-                        <Link to={getPhaseRoute(plan)}>
-                          <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
+                        <Button asChild size="sm" className="bg-blue-600 hover:bg-blue-700">
+                          <Link to={getPhaseRoute(plan)}>
                             {plan.status === 'active' ? t('viewPlan') : t('continue')} <ArrowRight className="w-4 h-4 ml-1" />
-                          </Button>
-                        </Link>
+                          </Link>
+                        </Button>
                       </div>
                     </div>
                   </div>
