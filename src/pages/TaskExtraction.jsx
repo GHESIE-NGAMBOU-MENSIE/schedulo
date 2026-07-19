@@ -44,7 +44,7 @@ function buildPrompt(course, plan, selfStudyBudget, calHours, workloadBreakdown)
   const isProject = !isThesis && structure.includes('project_work');
 
   const structureDesc = structure.length > 0 ?
-  `CONFIRMED COURSE STRUCTURE (student-confirmed — generate tasks ONLY for these elements):\n${structure.map((k) => `  - ${STRUCTURE_LABELS[k] || k}`).join('\n')}` :
+  `CONFIRMED COURSE STRUCTURE (student-confirmed — generate tasks ONLY for these elements):\n${structure.map((k) => `  - ${STRUCTURE_LABELS[k] || k}`).join('\n')}\n\nCRITICAL: Do NOT generate any tasks for structure elements that are NOT listed above. For example, if "Lectures" is not listed, do NOT create lecture review (reading) tasks. If "Exercises" is not listed, do NOT create exercise tasks. If "Assignments" is not listed, do NOT create assignment tasks. Only create tasks for the elements the student has confirmed.` :
   `COURSE TYPE: ${(course.course_type || []).join(', ') || 'lecture'}`;
 
   const wbLines = workloadBreakdown ?
@@ -164,6 +164,7 @@ ${projectRules}
 - Do NOT invent chapter/topic names not present in the materials. Use neutral titles.
 - If no detailed materials: use generic but honest titles ("Work through Chapter 1", "Review lecture Week 2").
 - Tasks must be returned in chronological order (smallest target_week first).
+- target_week values MUST be consecutive integers starting at 1 (1, 2, 3, 4, ...). Do NOT skip weeks (e.g. never jump from Week 1 to Week 11 to Week 15). Each task should get the next available week number, incrementing by 1. Multiple related tasks can share the same week, but the sequence of weeks must never have gaps.
 - Use "" for missing dates (not null).
 - source_text: exact quote from materials if available, else "".
 - task_order: assign sequential integers starting at 1, reflecting the correct study sequence within the course.
@@ -359,6 +360,59 @@ export default function TaskExtraction() {
     if (extracted.length === 0) {
       extracted = buildFallbackTasks(course, selfStudyBudget);
       isFallback = true;
+    }
+
+    // ── Filter out tasks for unselected course structure elements ──────────
+    // If the student deselected "lectures" or "exercises", tasks of those
+    // types must not be generated.
+    const structure = course.course_structure || [];
+    const isThesis = structure.some((k) => ['thesis_writing', 'literature_work'].includes(k)) ||
+      (course.course_type || []).some((t) => /thesis|bachelor|master/.test(t));
+    // Map task_type → required structure element(s). If none of the required
+    // elements are selected, the task is filtered out.
+    const typeToRequiredStructure = {
+      reading: ['lectures', 'literature_work'],
+      exercise: ['exercises', 'lab_work'],
+      assignment: ['assignments', 'paper_essay', 'seminar_presentation'],
+      test: ['quizzes', 'testate', 'final_exam', 'oral_exam'],
+      project_work: ['project_work', 'implementation', 'thesis_writing', 'supervision_meetings'],
+      revision: ['revision_buffer', 'final_exam', 'oral_exam'],
+    };
+    // For thesis courses, allow all task types since they're project milestones
+    if (!isThesis && structure.length > 0) {
+      extracted = extracted.filter((t) => {
+        const required = typeToRequiredStructure[t.task_type] || [];
+        // Keep the task if at least one of its required structure elements is selected
+        return required.some((k) => structure.includes(k));
+      });
+    }
+
+    // ── Normalize target_week to be consecutive (1, 2, 3, ...) ─────────────
+    // Sort by task_order (if available) then by existing target_week, then by
+    // chapter/exercise/assignment number, and reassign consecutive weeks.
+    if (extracted.length > 0) {
+      const sorted = [...extracted].sort((a, b) => {
+        if (a.task_order != null && b.task_order != null) return a.task_order - b.task_order;
+        if (a.task_order != null) return -1;
+        if (b.task_order != null) return 1;
+        const aw = a.target_week || 999;
+        const bw = b.target_week || 999;
+        if (aw !== bw) return aw - bw;
+        const aNum = a.chapter_number || a.exercise_number || a.assignment_number || 999;
+        const bNum = b.chapter_number || b.exercise_number || b.assignment_number || 999;
+        return aNum - bNum;
+      });
+      // Capture original target_week values before modifying
+      const origWeeks = sorted.map(t => t.target_week || 0);
+      // Assign consecutive weeks: tasks with the same original week get the same new week
+      let w = 1;
+      let prevOrig = null;
+      for (let i = 0; i < sorted.length; i++) {
+        if (prevOrig !== null && origWeeks[i] !== prevOrig) w++;
+        sorted[i].target_week = w;
+        prevOrig = origWeeks[i];
+      }
+      extracted = sorted;
     }
 
     // Scale to CP self-study budget

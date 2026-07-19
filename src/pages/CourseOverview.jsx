@@ -189,7 +189,7 @@ function CourseCard({ course, onDelete, onSave }) {
             <p className="font-medium text-gray-900 truncate">{course.name}</p>
             <p className="text-xs text-gray-400">
               {isComplete ?
-              <span className="text-green-600">✓ Confirmed{course.credit_points ? ` · ${course.credit_points} CP` : ''}{typeLabel ? ` · ${typeLabel}` : ''}</span> :
+              <span className="text-gray-500">{course.credit_points ? `${course.credit_points} CP` : ''}{typeLabel ? `${course.credit_points ? ' · ' : ''}${typeLabel}` : ''}</span> :
               'Tap to fill in course details'}
             </p>
           </div>
@@ -411,9 +411,69 @@ export default function CourseOverview() {
 
   const loadCourses = async () => {
     setLoading(true);
-    const list = await base44.entities.Course.filter({ plan_id: planId });
+    let list = await base44.entities.Course.filter({ plan_id: planId });
+    list = await mergeDuplicateCourses(list);
     setCourses(list);
     setLoading(false);
+  };
+
+  // Merge courses that are semantic duplicates (e.g. "Data Science Lecture" + "Data Science Exercise" → "Data Science")
+  const mergeDuplicateCourses = async (list) => {
+    const STRIP_WORDS = /\b(vorlesung|lecture|course|übung|ubung|exercise|exercises|lab|praktikum|tutorial|seminar|kurs|class|module|unit|introduction|intro)\b/gi;
+    const normalize = (name) => (name || '').replace(STRIP_WORDS, '').replace(/[-_/\\]+/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+    const toCanonical = (name) => {
+      const stripped = (name || '').replace(STRIP_WORDS, '').replace(/[-_/\\]+/g, ' ').replace(/\s+/g, ' ').trim();
+      return stripped || name;
+    };
+
+    // Group by normalized key
+    const groups = new Map();
+    for (const c of list) {
+      const key = normalize(c.name);
+      if (!key) continue;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(c);
+    }
+
+    const toDelete = [];
+    const merged = [];
+    let changed = false;
+
+    for (const [, group] of groups) {
+      if (group.length <= 1) { merged.push(...group); continue; }
+      changed = true;
+      // Pick the keeper: prefer confirmed, then shortest clean name
+      group.sort((a, b) => {
+        if (a.confirmed !== b.confirmed) return b.confirmed ? 1 : -1;
+        return toCanonical(a.name).length - toCanonical(b.name).length;
+      });
+      const keeper = group[0];
+      const canonicalName = toCanonical(keeper.name);
+      // Update keeper name if it's cleaner
+      if (canonicalName && canonicalName !== keeper.name) {
+        await base44.entities.Course.update(keeper.id, { name: canonicalName });
+        keeper.name = canonicalName;
+      }
+      // Move all tasks from duplicates to keeper, then delete duplicates
+      for (let i = 1; i < group.length; i++) {
+        const dup = group[i];
+        try {
+          const dupTasks = await base44.entities.StudyTask.filter({ course_id: dup.id });
+          if (dupTasks.length > 0) {
+            await base44.entities.StudyTask.updateMany({ course_id: dup.id }, { $set: { course_id: keeper.id, course_name: canonicalName } });
+          }
+        } catch (e) {}
+        toDelete.push(dup.id);
+      }
+      merged.push(keeper);
+    }
+
+    if (changed && toDelete.length > 0) {
+      for (const id of toDelete) {
+        try { await base44.entities.Course.delete(id); } catch (e) {}
+      }
+    }
+    return merged;
   };
 
   const addCourse = async () => {
@@ -463,7 +523,7 @@ export default function CourseOverview() {
           {/* Progress */}
           <div className="mb-6">
             <div className="flex justify-between text-xs text-gray-500 mb-1">
-              <span>{completedCount} of {courses.length} courses confirmed</span>
+              <span>{completedCount} of {courses.length} courses completed</span>
             </div>
             <Progress value={progressValue} className="h-2" />
           </div>

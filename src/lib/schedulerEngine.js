@@ -238,7 +238,10 @@ function tryPlace(dateKey, windowStart, windowEnd, maxMinutes, busyBlocks, study
   const usedMinutes = studyBlocks.reduce((sum, b) => sum + (b.end - b.start), 0);
   if (usedMinutes >= maxMinutes) return null;
 
-  const actualDuration = Math.min(durationMinutes, maxMinutes - usedMinutes);
+  // Try the full requested duration first; if daily capacity is nearly full, allow
+  // placing a shorter block that fits the remaining capacity (but ≥ 30 min).
+  const remainingCapacity = maxMinutes - usedMinutes;
+  const actualDuration = Math.min(durationMinutes, remainingCapacity);
   if (actualDuration < 30) return null;
 
   const freeBlocks = computeFreeBlocks(windowStart, windowEnd, busyBlocks, studyBlocks, breakDuration);
@@ -251,6 +254,13 @@ function tryPlace(dateKey, windowStart, windowEnd, maxMinutes, busyBlocks, study
     }
   }
 
+  // Try the full duration first in any free block
+  for (const fb of freeBlocks) {
+    if (fb.start + durationMinutes <= fb.end) {
+      return { dateStr: dateKey, start: fb.start, end: fb.start + durationMinutes };
+    }
+  }
+  // Fall back to the truncated duration (fills remaining daily capacity)
   for (const fb of freeBlocks) {
     if (fb.start + actualDuration <= fb.end) {
       return { dateStr: dateKey, start: fb.start, end: fb.start + actualDuration };
@@ -857,6 +867,22 @@ export function scheduleTasksEngine(tasks, calEvents, courses, prefs, startDate,
             if (result) {
               placed = result;
               explanation = 'Placed earlier (no later slot before deadline)';
+              break;
+            }
+          }
+        }
+
+        // ── Step G: Catch-all — try ALL study days in the entire period ──────
+        // This catches free slots that were missed by week-scoped steps above.
+        // Only constraint: dayAllowed (before deadline / after not-before).
+        if (!placed) {
+          for (const day of studyDays) {
+            if (!dayAllowed(day.dateKey)) continue;
+            const result = tryPlace(day.dateKey, day.winStart, day.winEnd, day.maxMinutes, day.busyBlocks, getStudyBlocks(day.dateKey), breakDuration, blockDur, null);
+            if (result) {
+              placed = result;
+              explanation = 'Placed in available free slot';
+              if (!courseRoutine[courseKey]) courseRoutine[courseKey] = { dow: day.dow, startMinutes: result.start };
               break;
             }
           }

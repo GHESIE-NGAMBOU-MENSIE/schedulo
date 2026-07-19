@@ -36,9 +36,13 @@ const RRULE_DAYS = { MO: 'Monday', TU: 'Tuesday', WE: 'Wednesday', TH: 'Thursday
 
 function parseDateVal(val) {
   if (!val) return { date: '', time: '' };
-  const raw = val.split(':').pop();
-  if (raw.length === 8) return { date: `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`, time: '' };
-  if (raw.length >= 15) return { date: `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`, time: `${raw.slice(9, 11)}:${raw.slice(11, 13)}` };
+  // ICS date-time can be: DATE (8 chars), DATE-TIME local (15 chars), DATE-TIME with Z (16 chars), DATE-TIME with TZID prefix
+  // The value after the last colon is the actual date/time value
+  const raw = val.split(':').pop().trim();
+  // Remove trailing Z (UTC indicator) — we treat as local for simplicity
+  const clean = raw.replace(/Z$/, '');
+  if (clean.length === 8) return { date: `${clean.slice(0, 4)}-${clean.slice(4, 6)}-${clean.slice(6, 8)}`, time: '' };
+  if (clean.length >= 15) return { date: `${clean.slice(0, 4)}-${clean.slice(4, 6)}-${clean.slice(6, 8)}`, time: `${clean.slice(9, 11)}:${clean.slice(11, 13)}` };
   return { date: '', time: '' };
 }
 

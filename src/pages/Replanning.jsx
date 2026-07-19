@@ -472,6 +472,7 @@ RULES — CRITICAL:
 6. Output JSON only — system shows a diff for the student to confirm before saving.
 7. NEVER output "no_change" if the CALENDAR STATE or SEQUENCE ANALYSIS section lists tasks for the affected date(s).
 8. SEQUENCE ORDER: When shifting sequential tasks (readings, exercises, chapters), you MUST shift the entire course chain together. Never leave a later chapter scheduled before an earlier one.
+9. COMMITMENT CHANGES: If the student wants to modify a calendar commitment (e.g. "move my work shift from Monday to Wednesday", "delete my gym session"), use the "commitment_change" response type. The system will automatically detect conflicts with study tasks and reschedule them.
 
 CURRENTLY VISIBLE CALENDAR WEEK: ${visibleWeekLabel}
 Resolved weekday dates:
@@ -484,6 +485,9 @@ Resolved weekday dates:
 - Sunday: ${getLocalDateStr(visibleWeekDates[6])}
 - "this week" = ${getLocalDateStr(visibleWeekDates[0])} to ${getLocalDateStr(visibleWeekDates[6])}
 - "next week" = ${getLocalDateStr(nextWeekDates[0])} to ${getLocalDateStr(nextWeekDates[6])}
+
+CALENDAR COMMITMENTS (fixed events in the student's calendar):
+${(plan?.calendar_events || []).filter(e => !e.is_course).map(e => `- "${e.name}" | day: ${e.day_of_week || 'Flexible'} | time: ${e.start_time || '?'}–${e.end_time || '?'} | recurring: ${e.is_recurring ? 'yes' : 'no'} | start: ${e.start_date || '?'}`).join('\n') || '(none)'}
 
 ${dayContext ? `\n${dayContext}\n` : ''}
 ${weekContext ? `\nWEEK TASK SUMMARY: ${weekContext}\n` : ''}
@@ -517,7 +521,7 @@ Option A — Clarification needed (e.g. "just this Monday" vs "every Monday"):
   ]
 }
 
-Option B — Proposal ready:
+Option B — Proposal ready (study task changes):
 {
   "type": "proposal",
   "understanding": "I understood: [what the student means, naming the blocked dates and affected courses]",
@@ -530,7 +534,20 @@ Option B — Proposal ready:
   "unchanged_count": 0
 }
 
-Option C — No change needed (ONLY if affected sections above listed zero tasks):
+Option C — Commitment change (modifying calendar events like work shifts, gym, etc.):
+{
+  "type": "commitment_change",
+  "understanding": "I understood: [what the student wants to change about their calendar]",
+  "explanation": "[Friendly explanation of the calendar change]",
+  "commitment_changes": [
+    { "event_name": "[exact event name from the calendar list]", "action": "move", "new_day_of_week": "Wednesday", "new_start_time": "HH:MM", "new_end_time": "HH:MM", "new_start_date": "YYYY-MM-DD" }
+  ]
+}
+Use action "move" to reschedule an event to a different day/time, or action "delete" to remove it.
+For "move", set new_day_of_week to the full weekday name (e.g. "Wednesday"), and provide new_start_time and new_end_time in HH:MM format.
+If the student mentions a weekday, use the resolved date from above for new_start_date.
+
+Option D — No change needed (ONLY if affected sections above listed zero tasks):
 {
   "type": "no_change",
   "message": "[Must reference the specific date(s) and confirm zero tasks found]"
@@ -552,7 +569,15 @@ IMPORTANT: Include ALL [MUST MOVE] and [MUST FOLLOW] tasks from the SEQUENCE ANA
             removals: { type: 'array', items: { type: 'string' } },
             affected_count: { type: 'number' },
             unchanged_count: { type: 'number' },
-            message: { type: 'string' }
+            message: { type: 'string' },
+            commitment_changes: { type: 'array', items: { type: 'object', properties: {
+              event_name: { type: 'string' },
+              action: { type: 'string' },
+              new_day_of_week: { type: 'string' },
+              new_start_time: { type: 'string' },
+              new_end_time: { type: 'string' },
+              new_start_date: { type: 'string' }
+            } } }
           }
         }
       });
@@ -567,10 +592,14 @@ IMPORTANT: Include ALL [MUST MOVE] and [MUST FOLLOW] tasks from the SEQUENCE ANA
         }));
         setMessages(prev => [...prev, { role: 'assistant', content: result.question }]);
         setClarification({ question: result.question, options: opts, originalText: text });
+      } else if (result.type === 'commitment_change') {
+        // Handle commitment (calendar event) modifications
+        await handleCommitmentChange(result);
       } else if (result.type === 'proposal') {
         // Validate each proposed move against constraints before showing
         const prefs = plan?.preferences || {};
         const conflicts = [];
+        const autoResolved = [];
         for (const u of (result.updates || [])) {
           const task = tasks.find(t => t.id === u.task_id);
           if (!task) continue;
@@ -586,14 +615,49 @@ IMPORTANT: Include ALL [MUST MOVE] and [MUST FOLLOW] tasks from the SEQUENCE ANA
             planEnd: plan?.end_date,
           });
           if (!validation.valid) {
-            conflicts.push({ task_id: u.task_id, title: task.title, reason: validation.reason });
+            // Auto-find a conflict-free alternative slot
+            const [eh, em] = (u.scheduled_end || '10:00').split(':').map(Number);
+            const [sh, sm] = (u.scheduled_start || '09:00').split(':').map(Number);
+            const duration = (eh * 60 + em) - (sh * 60 + sm);
+            const alternatives = findAlternativeSlots({
+              newDate: u.scheduled_date,
+              duration,
+              task,
+              allTasks: tasks,
+              busyMap: expandedBusyMap,
+              prefs,
+              planStart: plan?.start_date,
+              planEnd: plan?.end_date,
+            });
+            if (alternatives.length > 0) {
+              const slot = alternatives[0];
+              autoResolved.push({
+                task_id: u.task_id,
+                original_date: u.scheduled_date,
+                original_start: u.scheduled_start,
+                original_end: u.scheduled_end,
+                new_date: slot.date,
+                new_start: slot.start,
+                new_end: slot.end,
+                reason: `Moved to avoid conflict: ${validation.reason}`,
+              });
+              // Update the proposal with the conflict-free slot
+              u.scheduled_date = slot.date;
+              u.scheduled_start = slot.start;
+              u.scheduled_end = slot.end;
+              u.reason = `${u.reason} → auto-resolved conflict (moved to ${slot.date} ${slot.start}–${slot.end})`;
+            } else {
+              conflicts.push({ task_id: u.task_id, title: task.title, reason: validation.reason });
+            }
           }
         }
 
         setProposal({ ...result, conflicts });
         const conflictNote = conflicts.length > 0
-          ? `\n\n⚠️ **${conflicts.length} conflict(s) detected** in the proposal — review before accepting.`
-          : '';
+          ? `\n\n⚠️ **${conflicts.length} conflict(s) could not be auto-resolved** — these moves will be skipped.`
+          : autoResolved.length > 0
+            ? `\n\n✅ **${autoResolved.length} conflict(s) auto-resolved** — moved to the next available free slot.`
+            : '';
         setMessages(prev => [...prev, {
           role: 'assistant',
           content: `**${result.understanding || 'Here is what I propose:'}**\n\n${result.explanation}${conflictNote}\n\nThis affects **${result.updates?.length || 0}** task(s). Review the changes above and accept or cancel.`
@@ -605,6 +669,120 @@ IMPORTANT: Include ALL [MUST MOVE] and [MUST FOLLOW] tasks from the SEQUENCE ANA
       setMessages(prev => [...prev, { role: 'assistant', content: "Sorry, I couldn't process that. Please try again." }]);
     }
     setLoading(false);
+  };
+
+  // ── Handle commitment (calendar event) changes ────────────────────────────
+  const handleCommitmentChange = async (result) => {
+    const changes = result.commitment_changes || [];
+    if (changes.length === 0) {
+      setMessages(prev => [...prev, { role: 'assistant', content: result.message || 'I could not detect any commitment changes to make.' }]);
+      return;
+    }
+
+    const updatedEvents = [...(plan.calendar_events || [])];
+    const affectedTaskUpdates = [];
+
+    for (const change of changes) {
+      const { event_name, action, new_day_of_week, new_start_time, new_end_time, new_start_date } = change;
+      // Find the event by name (case-insensitive)
+      const evIdx = updatedEvents.findIndex(e => (e.name || '').toLowerCase() === (event_name || '').toLowerCase());
+      if (evIdx === -1) continue;
+
+      if (action === 'move') {
+        const ev = { ...updatedEvents[evIdx] };
+        if (new_day_of_week) ev.day_of_week = new_day_of_week;
+        if (new_start_time) ev.start_time = new_start_time;
+        if (new_end_time) ev.end_time = new_end_time;
+        if (new_start_date) {
+          ev.start_date = new_start_date;
+          // Adjust end_date if recurring and end was same as start
+          if (ev.is_recurring && ev.end_date === updatedEvents[evIdx].start_date) {
+            ev.end_date = new_start_date;
+          }
+        }
+        updatedEvents[evIdx] = ev;
+      } else if (action === 'delete') {
+        updatedEvents.splice(evIdx, 1);
+      }
+    }
+
+    // Save updated calendar events to the plan
+    await base44.entities.StudyPlan.update(planId, { calendar_events: updatedEvents });
+    setPlan(prev => ({ ...prev, calendar_events: updatedEvents }));
+
+    // Rebuild busy map with updated events
+    const { busy: newBusy } = buildBusyMapPublic(updatedEvents, courses, plan.start_date, plan.end_date);
+    setExpandedBusyMap(newBusy);
+
+    // Find study tasks that now conflict with the updated calendar events
+    const prefs = plan?.preferences || {};
+    const conflictTasks = [];
+    for (const task of tasks) {
+      if (!task.scheduled_date || !task.scheduled_start || !task.scheduled_end) continue;
+      if (task.status === 'completed') continue;
+      const dayBusy = newBusy[task.scheduled_date] || [];
+      const taskStart = parseInt(task.scheduled_start.substring(0, 2)) * 60 + parseInt(task.scheduled_start.substring(3, 5));
+      const taskEnd = parseInt(task.scheduled_end.substring(0, 2)) * 60 + parseInt(task.scheduled_end.substring(3, 5));
+      const hasConflict = dayBusy.some(b => taskStart < b.end && taskEnd > b.start);
+      if (hasConflict) {
+        // Auto-find a conflict-free alternative
+        const [eh, em] = task.scheduled_end.split(':').map(Number);
+        const [sh, sm] = task.scheduled_start.split(':').map(Number);
+        const duration = (eh * 60 + em) - (sh * 60 + sm);
+        const alternatives = findAlternativeSlots({
+          newDate: task.scheduled_date,
+          duration,
+          task,
+          allTasks: tasks,
+          busyMap: newBusy,
+          prefs,
+          planStart: plan?.start_date,
+          planEnd: plan?.end_date,
+        });
+        if (alternatives.length > 0) {
+          const slot = alternatives[0];
+          affectedTaskUpdates.push({
+            task_id: task.id,
+            title: task.title,
+            course_name: task.course_name,
+            old_date: task.scheduled_date,
+            old_start: task.scheduled_start,
+            old_end: task.scheduled_end,
+            new_date: slot.date,
+            new_start: slot.start,
+            new_end: slot.end,
+          });
+        }
+      }
+    }
+
+    if (affectedTaskUpdates.length > 0) {
+      // Show proposal with auto-resolved task moves
+      setProposal({
+        type: 'proposal',
+        understanding: result.understanding || 'I updated your calendar commitments.',
+        explanation: result.explanation || `I've updated your calendar. ${affectedTaskUpdates.length} study task(s) conflicted with the new schedule and have been auto-rescheduled to the next available free slot.`,
+        updates: affectedTaskUpdates.map(u => ({
+          task_id: u.task_id,
+          scheduled_date: u.new_date,
+          scheduled_start: u.new_start,
+          scheduled_end: u.new_end,
+          reason: `Auto-rescheduled due to calendar change`,
+        })),
+        removals: [],
+        conflicts: [],
+        isCommitmentChange: true,
+      });
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: `**${result.understanding || 'Calendar updated!'}**\n\n${result.explanation || ''}\n\nI've also detected **${affectedTaskUpdates.length} study task(s)** that now conflict with your updated calendar. I've automatically found conflict-free slots for them — review and accept below.`
+      }]);
+    } else {
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: `**${result.understanding || 'Calendar updated!'}**\n\n${result.explanation || ''}\n\nNo study tasks were affected by this change.`
+      }]);
+    }
   };
 
   // ── Accept proposal ───────────────────────────────────────────────────────
@@ -639,6 +817,13 @@ IMPORTANT: Include ALL [MUST MOVE] and [MUST FOLLOW] tasks from the SEQUENCE ANA
       // Reload tasks
       const updated = await base44.entities.StudyTask.filter({ plan_id: planId });
       setTasks(updated);
+      // If this was a commitment change, also reload the plan and busy map
+      if (proposal.isCommitmentChange) {
+        const updatedPlan = await base44.entities.StudyPlan.get(planId);
+        setPlan(updatedPlan);
+        const { busy: updatedBusy } = buildBusyMapPublic(updatedPlan.calendar_events || [], courses, updatedPlan.start_date, updatedPlan.end_date);
+        setExpandedBusyMap(updatedBusy);
+      }
       setProposal(null);
       setMessages(prev => [...prev, {
         role: 'assistant',
@@ -860,7 +1045,7 @@ IMPORTANT: Include ALL [MUST MOVE] and [MUST FOLLOW] tasks from the SEQUENCE ANA
                   "I can't study on Monday",
                   "I'm sick and can't study this week",
                   "The deadline was moved",
-                  "I need to add a blocked day"
+                  "Move my work shift from Monday to Wednesday"
                 ].map(s => (
                   <button
                     key={s}

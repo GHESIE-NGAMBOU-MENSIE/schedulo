@@ -18,6 +18,7 @@ export default function ActivePlan() {
   const navigate = useNavigate();
   const [plan, setPlan] = useState(null);
   const [tasks, setTasks] = useState([]);
+  const [courses, setCourses] = useState([]);
   const [view, setView] = useState('calendar');
   const [filter, setFilter] = useState('all');
   const [weekOffset, setWeekOffset] = useState(null); // null = not yet computed
@@ -37,7 +38,8 @@ export default function ActivePlan() {
       ]);
       setPlan(p);
       setTasks(t);
-      const { busy } = buildBusyMapPublic(p.calendar_events || [], courses, p.start_date, p.end_date);
+      setCourses(c);
+      const { busy } = buildBusyMapPublic(p.calendar_events || [], c, p.start_date, p.end_date);
       setExpandedBusyMap(busy);
 
       // Jump to the week containing the first upcoming (non-completed) scheduled task,
@@ -140,13 +142,29 @@ export default function ActivePlan() {
   const progress = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
   const overdueCount = tasks.filter(t => t.deadline && new Date(t.deadline) < PLANNING_REFERENCE_DATE && t.status !== 'completed').length;
 
-  const typeColors = {
-    reading: 'bg-blue-100 border-blue-300 text-blue-800',
-    assignment: 'bg-purple-100 border-purple-300 text-purple-800',
-    exercise: 'bg-green-100 border-green-300 text-green-800',
-    revision: 'bg-amber-100 border-amber-300 text-amber-800',
-    test: 'bg-red-100 border-red-300 text-red-800',
-    project_work: 'bg-indigo-100 border-indigo-300 text-indigo-800',
+  // Per-course color palette (Tailwind literal classes — must be literal for purge)
+  const COURSE_COLOR_PALETTE = [
+    { bg: 'bg-blue-100', border: 'border-blue-400', text: 'text-blue-900' },
+    { bg: 'bg-violet-100', border: 'border-violet-400', text: 'text-violet-900' },
+    { bg: 'bg-emerald-100', border: 'border-emerald-400', text: 'text-emerald-900' },
+    { bg: 'bg-amber-100', border: 'border-amber-400', text: 'text-amber-900' },
+    { bg: 'bg-rose-100', border: 'border-rose-400', text: 'text-rose-900' },
+    { bg: 'bg-cyan-100', border: 'border-cyan-400', text: 'text-cyan-900' },
+    { bg: 'bg-orange-100', border: 'border-orange-400', text: 'text-orange-900' },
+    { bg: 'bg-pink-100', border: 'border-pink-400', text: 'text-pink-900' },
+    { bg: 'bg-teal-100', border: 'border-teal-400', text: 'text-teal-900' },
+    { bg: 'bg-indigo-100', border: 'border-indigo-400', text: 'text-indigo-900' },
+  ];
+
+  const courseColorMap = courses.reduce((acc, c, i) => {
+    const color = COURSE_COLOR_PALETTE[i % COURSE_COLOR_PALETTE.length];
+    acc[c.id] = color;
+    acc[c.name] = color;
+    return acc;
+  }, {});
+
+  const getTaskColor = (task) => {
+    return courseColorMap[task.course_id] || courseColorMap[task.course_name] || COURSE_COLOR_PALETTE[0];
   };
 
   if (loading) {
@@ -295,7 +313,7 @@ export default function ActivePlan() {
                             <button
                               key={`t-${j}`}
                               onClick={() => toggleTaskStatus(task.id, task.status)}
-                              className={`absolute z-20 rounded border overflow-hidden text-left w-full ${task.status === 'completed' ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : typeColors[task.task_type] || 'bg-gray-100 border-gray-200 text-gray-700'}`}
+                              className={`absolute z-20 rounded border overflow-hidden text-left w-full ${task.status === 'completed' ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : `${getTaskColor(task).bg} ${getTaskColor(task).border} ${getTaskColor(task).text}`}`}
                               style={{ top: toTopPx(task.scheduled_start), height: toDurationPx(task.scheduled_start, task.scheduled_end), left: colLeft, width: colWidth, padding: '3px 5px' }}
                               title={`${task.title} — click to toggle complete`}
                             >
@@ -326,7 +344,7 @@ export default function ActivePlan() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <p className={`font-medium ${task.status === 'completed' ? 'line-through text-gray-400' : 'text-gray-900'}`}>{task.title}</p>
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${typeColors[task.task_type] || 'bg-gray-100 text-gray-600'}`}>{task.task_type?.replace('_', ' ')}</span>
+                      <span className={`flex-shrink-0 px-2 py-0.5 rounded-full text-xs font-medium border ${getTaskColor(task).bg} ${getTaskColor(task).border} ${getTaskColor(task).text}`}>{task.task_type?.replace('_', ' ')}</span>
                     </div>
                     <p className="text-xs text-gray-400">{task.course_name} · {task.scheduled_date} {task.scheduled_start}-{task.scheduled_end} · {task.estimated_hours}h</p>
                   </div>
