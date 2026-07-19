@@ -50,7 +50,8 @@ function extractDayFromRrule(rrule) {
   const m = rrule.match(/BYDAY=([A-Z,]+)/);
   if (!m) return 'Flexible';
   const days = m[1].split(',').map((d) => RRULE_DAYS[d]).filter(Boolean);
-  return days.length === 1 ? days[0] : 'Flexible';
+  if (days.length === 0) return 'Flexible';
+  return days.join(','); // "Monday,Tuesday,Thursday" for multi-day RRULEs
 }
 
 function extractUntilFromRrule(rrule) {
@@ -105,19 +106,25 @@ function parseICS(text, startDate, endDate) {
   for (const ev of rawEvents) {
     const name = ev.name || 'Untitled';
     if (!eventMap.has(name)) {
-      eventMap.set(name, { ...ev });
-    } else {
-      const existing = eventMap.get(name);
-      // Track earliest start and latest end across all occurrences
-      if (ev.date && (!existing.date || ev.date < existing.date)) {
-        existing.date = ev.date;
+      eventMap.set(name, { ...ev, _occurrenceDays: new Set() });
+    }
+    const existing = eventMap.get(name);
+    // Track earliest start and latest end across all occurrences
+    if (ev.date && (!existing.date || ev.date < existing.date)) {
+      existing.date = ev.date;
+    }
+    if (ev.date && (!existing.end_occurrence || ev.date > existing.end_occurrence)) {
+      existing.end_occurrence = ev.date;
+    }
+    if (ev.is_recurring) existing.is_recurring = true;
+    if (ev.rrule_day && ev.rrule_day !== 'Flexible') existing.rrule_day = ev.rrule_day;
+    if (ev.rrule_until) existing.rrule_until = ev.rrule_until;
+    // Track all unique days of week from pre-expanded occurrences
+    if (ev.date) {
+      const d = new Date(ev.date);
+      if (!isNaN(d)) {
+        existing._occurrenceDays.add(['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][d.getDay()]);
       }
-      if (ev.date && (!existing.end_occurrence || ev.date > existing.end_occurrence)) {
-        existing.end_occurrence = ev.date;
-      }
-      if (ev.is_recurring) existing.is_recurring = true;
-      if (ev.rrule_day && ev.rrule_day !== 'Flexible') existing.rrule_day = ev.rrule_day;
-      if (ev.rrule_until) existing.rrule_until = ev.rrule_until;
     }
   }
 
@@ -131,8 +138,12 @@ function parseICS(text, startDate, endDate) {
     // For single non-recurring events, filter by study period
     if (!isRecurring && evDate && (evDate < start || evDate > end)) continue;
 
-    // Determine day_of_week from start_date if not set from RRULE
+    // Determine day_of_week: combine RRULE days and occurrence days (comma-separated for multi-day)
+    const occurrenceDays = [...(ev._occurrenceDays || [])];
     let dayOfWeek = ev.rrule_day || 'Flexible';
+    if (dayOfWeek === 'Flexible' && occurrenceDays.length > 0) {
+      dayOfWeek = occurrenceDays.join(',');
+    }
     if (dayOfWeek === 'Flexible' && ev.date) {
       const d = new Date(ev.date);
       if (!isNaN(d)) {
@@ -432,20 +443,31 @@ export default function StudyDates() {
                   {manualErrors.type && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{manualErrors.type}</p>}
                 </div>
 
-                {/* Day of week */}
-                <div>
-                  <Label className="text-sm text-gray-600">Day of week</Label>
-                  <Select value={manualEvent.day_of_week} onValueChange={(v) => setManualEvent((p) => ({ ...p, day_of_week: v }))}>
-                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {DAYS_OF_WEEK.map((d) =>
-                    <SelectItem key={d} value={d}>{d}</SelectItem>
-                    )}
-                    </SelectContent>
-                  </Select>
-                  {manualEvent.day_of_week === 'Flexible' &&
-                <p className="text-xs text-gray-400 mt-1">Flexible = no fixed day; can be done any time.</p>
-                }
+                {/* Days of week (multi-select) */}
+                <div className="sm:col-span-2">
+                  <Label className="text-sm text-gray-600">Days of week</Label>
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((d) => {
+                      const selected = (manualEvent.day_of_week || '').split(',').map((s) => s.trim()).includes(d);
+                      return (
+                        <button
+                          key={d}
+                          type="button"
+                          onClick={() => {
+                            const current = (manualEvent.day_of_week || '').split(',').map((s) => s.trim()).filter((s) => s && s !== 'Flexible');
+                            const next = selected ? current.filter((x) => x !== d) : [...current, d];
+                            setManualEvent((p) => ({ ...p, day_of_week: next.length ? next.join(',') : 'Flexible' }));
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${selected ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                        >
+                          {d.slice(0, 3)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {(!manualEvent.day_of_week || manualEvent.day_of_week === 'Flexible') &&
+                    <p className="text-xs text-gray-400 mt-1">Flexible = no fixed day; can be done any time. Select one or more days for a recurring commitment.</p>
+                  }
                 </div>
 
                 {/* Recurring toggle */}

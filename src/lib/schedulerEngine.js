@@ -164,14 +164,14 @@ function buildBusyMap(calEvents, courses, startDate, endDate) {
     if (isRecurring) {
       if (!start || !end) continue;
       const DAY_NAME_TO_DOW = { Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6 };
-      let targetDow = null;
+      // day_of_week can be comma-separated (e.g. "Monday,Tuesday,Thursday") for multi-day recurring events
+      const dayNames = (ev.day_of_week || '').split(',').map(s => s.trim()).filter(Boolean);
+      let targetDows = dayNames.map(d => DAY_NAME_TO_DOW[d]).filter(d => d !== undefined);
       const anchorDate = parseDate(evDateStr);
-      if (anchorDate) {
-        targetDow = anchorDate.getDay();
-      } else if (ev.day_of_week && DAY_NAME_TO_DOW[ev.day_of_week] !== undefined) {
-        targetDow = DAY_NAME_TO_DOW[ev.day_of_week];
+      if (targetDows.length === 0 && anchorDate) {
+        targetDows = [anchorDate.getDay()];
       }
-      if (targetDow === null) continue;
+      if (targetDows.length === 0) continue;
       const evStartDate = evDateStr ? parseDate(evDateStr) : null;
       const recurStart = (evStartDate && evStartDate > start) ? evStartDate : start;
       let recurEnd = end;
@@ -184,11 +184,13 @@ function buildBusyMap(calEvents, courses, startDate, endDate) {
         const endOcc = parseDate(ev.end_occurrence);
         if (endOcc && endOcc > (parseDate(evDateStr) || start) && endOcc < end) recurEnd = endOcc;
       }
-      let cur = new Date(recurStart);
-      while (cur.getDay() !== targetDow) cur = addDays(cur, 1);
-      while (cur <= recurEnd) {
-        addBusy(toDateStr(cur), startMin, endMin, ev, evType, courseId);
-        cur = addDays(cur, 7);
+      for (const targetDow of targetDows) {
+        let cur = new Date(recurStart);
+        while (cur.getDay() !== targetDow) cur = addDays(cur, 1);
+        while (cur <= recurEnd) {
+          addBusy(toDateStr(cur), startMin, endMin, ev, evType, courseId);
+          cur = addDays(cur, 7);
+        }
       }
     } else {
       const d = parseDate(evDateStr);
