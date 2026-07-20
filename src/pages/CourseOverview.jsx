@@ -341,17 +341,17 @@ function CourseCard({ course, onDelete, onSave }) {
               </div>
 
               {/* ── Difficulty ── */}
-              <div className="max-w-xs hidden">
-                <Label className="text-xs text-gray-600">Perceived difficulty</Label>
-                <Select value={difficulty} onValueChange={setDifficulty}>
-                  <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="easy">Easy</SelectItem>
-                    <SelectItem value="medium">Medium</SelectItem>
-                    <SelectItem value="difficult">Difficult</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              
+
+
+
+
+
+
+
+
+
+            
 
               {/* ── Documents ── */}
               <div>
