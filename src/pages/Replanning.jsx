@@ -73,7 +73,7 @@ function MiniCalendar({ tasks, expandedBusyMap, showBlockedTimes, weekOffset, se
     project_work: 'bg-indigo-100 border-indigo-300 text-indigo-800',
   };
 
-  // Merge pending changes preview into tasks
+  // Merge pending changes preview into tasks (shown at NEW position)
   const previewTasks = tasks.map(t => {
     const change = pendingChanges?.updates?.find(u => u.task_id === t.id);
     if (change) return { ...t, ...change, _isPending: true };
@@ -81,14 +81,60 @@ function MiniCalendar({ tasks, expandedBusyMap, showBlockedTimes, weekOffset, se
     return t;
   });
 
+  // Ghost tasks: show OLD positions of moved tasks (faded, so the user sees what moved)
+  const ghostTasks = (pendingChanges?.updates || [])
+    .map(u => {
+      const task = tasks.find(t => t.id === u.task_id);
+      if (!task || !task.scheduled_date || !task.scheduled_start || !task.scheduled_end) return null;
+      if (task.scheduled_date === u.scheduled_date && task.scheduled_start === u.scheduled_start) return null;
+      return { ...task, _isGhost: true };
+    })
+    .filter(Boolean);
+
+  // Compute which week offsets have proposed changes (for navigation dots + jump)
+  const changedWeekOffsets = React.useMemo(() => {
+    if (!pendingChanges?.updates) return new Set();
+    const offsets = new Set();
+    const ref = new Date(PLANNING_REFERENCE_DATE);
+    const refM = new Date(ref); refM.setDate(ref.getDate() - ((ref.getDay() + 6) % 7));
+    const allDates = pendingChanges.updates.flatMap(u => {
+      const task = tasks.find(t => t.id === u.task_id);
+      return [task?.scheduled_date, u.scheduled_date].filter(Boolean);
+    });
+    for (const ds of allDates) {
+      const d = new Date(ds + 'T00:00:00');
+      const dM = new Date(d); dM.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+      offsets.add(Math.round((dM - refM) / (7 * 86400000)));
+    }
+    return offsets;
+  }, [pendingChanges, tasks]);
+
+  const hasChangesThisWeek = changedWeekOffsets.has(weekOffset);
+  const sortedChangeWeeks = [...changedWeekOffsets].sort((a, b) => a - b);
+  const jumpToNextChange = () => {
+    const next = sortedChangeWeeks.find(w => w > weekOffset);
+    if (next !== undefined) setWeekOffset(next);
+    else if (sortedChangeWeeks.length > 0) setWeekOffset(sortedChangeWeeks[0]);
+  };
+
   return (
     <div className="bg-white rounded-xl border border-blue-100 shadow-sm overflow-hidden flex flex-col h-full">
       <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100 bg-gray-50">
         <button onClick={() => setWeekOffset(w => w - 1)} className="p-1 hover:bg-gray-200 rounded"><ChevronLeft className="w-4 h-4 text-gray-500" /></button>
-        <span className="text-xs font-medium text-gray-600">
-          {weekDates[0]?.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – {weekDates[6]?.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-        </span>
-        <button onClick={() => setWeekOffset(w => w + 1)} className="p-1 hover:bg-gray-200 rounded"><ChevronRight className="w-4 h-4 text-gray-500" /></button>
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs font-medium text-gray-600">
+            {weekDates[0]?.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – {weekDates[6]?.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+          </span>
+          {hasChangesThisWeek && <span className="w-1.5 h-1.5 rounded-full bg-orange-400" title="Changes in this week" />}
+        </div>
+        <div className="flex items-center gap-1">
+          {changedWeekOffsets.size > 0 && (
+            <button onClick={jumpToNextChange} className="text-[10px] text-orange-600 hover:bg-orange-50 rounded px-1.5 py-0.5 font-medium" title="Jump to next week with changes">
+              → Changes
+            </button>
+          )}
+          <button onClick={() => setWeekOffset(w => w + 1)} className="p-1 hover:bg-gray-200 rounded"><ChevronRight className="w-4 h-4 text-gray-500" /></button>
+        </div>
       </div>
       {/* Day headers */}
       <div className="grid border-b border-gray-100" style={{ gridTemplateColumns: '36px repeat(7, 1fr)' }}>
@@ -122,6 +168,15 @@ function MiniCalendar({ tasks, expandedBusyMap, showBlockedTimes, weekOffset, se
                   <div key={`ev-${j}`} className="absolute z-10 bg-gray-100 border border-gray-300 rounded overflow-hidden pointer-events-none"
                     style={{ top: toTopPx(ev.start_time), height: toDurPx(ev.start_time, ev.end_time), left: colLeft, width: colWidth, padding: '1px 3px' }}>
                     <p className="text-[10px] font-medium leading-tight truncate text-gray-600">{ev.name}</p>
+                  </div>
+                ))}
+                {ghostTasks.filter(gt => gt.scheduled_date === ds).map((task, j) => (
+                  <div key={`g-${j}`}
+                    className="absolute rounded border-2 border-dashed border-gray-300 bg-gray-50/60 overflow-hidden pointer-events-none"
+                    style={{ top: toTopPx(task.scheduled_start), height: toDurPx(task.scheduled_start, task.scheduled_end), left: colLeft, width: colWidth, padding: '2px 3px', opacity: 0.55 }}>
+                    <p className="text-[10px] font-semibold leading-tight truncate text-gray-400 line-through">{task.course_name}</p>
+                    <p className="text-[10px] leading-tight truncate text-gray-400">{task.title}</p>
+                    <span className="text-[9px] text-gray-400 block leading-none">↸ moved</span>
                   </div>
                 ))}
                 {dayTasks.map((task, j) => (
@@ -235,6 +290,20 @@ export default function Replanning() {
   useEffect(() => {
     if (endRef.current) endRef.current.scrollIntoView({ behavior: 'smooth' });
   }, [messages, clarification, proposal]);
+
+  // Auto-navigate calendar to the week of the first proposed change
+  useEffect(() => {
+    if (proposal?.updates?.length > 0) {
+      const firstNewDate = proposal.updates.find(u => u.scheduled_date)?.scheduled_date;
+      if (firstNewDate) {
+        const targetDate = new Date(firstNewDate + 'T00:00:00');
+        const ref = new Date(PLANNING_REFERENCE_DATE);
+        const refM = new Date(ref); refM.setDate(ref.getDate() - ((ref.getDay() + 6) % 7));
+        const targetM = new Date(targetDate); targetM.setDate(targetDate.getDate() - ((targetDate.getDay() + 6) % 7));
+        setWeekOffset(Math.round((targetM - refM) / (7 * 86400000)));
+      }
+    }
+  }, [proposal]);
 
   // ── Visible week context ──────────────────────────────────────────────────
   const visibleWeekDates = getWeekDatesFromOffset(weekOffset);
@@ -923,9 +992,9 @@ IMPORTANT: Include ALL [MUST MOVE] and [MUST FOLLOW] tasks from the SEQUENCE ANA
             </Button>
           </div>
 
-          <div className="flex gap-6 items-start">
+          <div className="flex flex-col lg:flex-row gap-6 items-start">
             {/* Calendar panel */}
-            <div className="hidden lg:flex flex-col flex-1 min-w-0" style={{ height: 580 }}>
+            <div className="flex flex-col flex-1 min-w-0" style={{ height: 'clamp(380px, 55vh, 580px)' }}>
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
                   <Calendar className="w-4 h-4 text-blue-500" /> Your Calendar
