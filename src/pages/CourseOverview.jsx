@@ -257,11 +257,11 @@ function CourseCard({ course, onDelete, onSave }) {
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <Label className="text-xs text-gray-600">Course structure / workload elements</Label>
-                  {courseType &&
-                <button onClick={() => setStructure(suggestStructure(courseType))} className="text-xs text-blue-500 hover:text-blue-700 hidden">
-                      Reset to suggestion
-                    </button>
-                }
+                  
+
+
+
+                
                 </div>
                 <p className="text-xs text-gray-400 mb-2">Select everything that applies — only selected elements will appear in the workload breakdown.</p>
                 {STRUCTURE_GROUPS.map((group) => {
