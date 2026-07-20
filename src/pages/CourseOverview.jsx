@@ -318,7 +318,7 @@ function CourseCard({ course, onDelete, onSave }) {
                   </div>
               }
                 {examType === 'unknown' &&
-              <p className="text-xs text-amber-600">⚠ No exam date — provisional preparation will be placed at the end of the semester.</p>
+              <p className="text-xs text-amber-600 hidden">⚠ No exam date — provisional preparation will be placed at the end of the semester.</p>
               }
               </div>
 
