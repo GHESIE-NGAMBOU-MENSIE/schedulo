@@ -317,9 +317,9 @@ function CourseCard({ course, onDelete, onSave }) {
                     <Input type="date" value={examWindowEnd} onChange={(e) => setExamWindowEnd(e.target.value)} className="h-8 text-sm" placeholder="To" />
                   </div>
               }
-                {examType === 'unknown' &&
-              <p className="text-xs text-amber-600 hidden">⚠ No exam date — provisional preparation will be placed at the end of the semester.</p>
-              }
+                
+
+              
               </div>
 
               {/* ── Course content counts ── */}
