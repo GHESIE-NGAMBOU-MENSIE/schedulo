@@ -386,12 +386,10 @@ export default function StudyDates() {
             
             <div className="flex flex-wrap gap-3 items-center">
               {!calendarFileName ? (
-                <label className="cursor-pointer">
+                <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium">
                   <input type="file" accept=".ics" onChange={handleFileUpload} className="hidden" />
-                  <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium">
-                    {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileUp className="w-4 h-4" />}
-                    {uploading ? 'Parsing...' : 'Upload .ics file'}
-                  </div>
+                  {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileUp className="w-4 h-4" />}
+                  {uploading ? 'Parsing...' : 'Upload .ics file'}
                 </label>
               ) : (
                 <div className="flex items-center gap-2 px-4 py-2 bg-green-50 border border-green-200 rounded-lg text-sm">
