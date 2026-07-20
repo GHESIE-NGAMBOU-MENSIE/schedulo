@@ -263,7 +263,7 @@ function CourseCard({ course, onDelete, onSave }) {
 
                 
                 </div>
-                <p className="text-xs text-gray-400 mb-2">Select everything that applies — only selected elements will appear in the workload breakdown.</p>
+                <p className="text-xs text-gray-400 mb-2 hidden">Select everything that applies — only selected elements will appear in the workload breakdown.</p>
                 {STRUCTURE_GROUPS.map((group) => {
                 const items = STRUCTURE_ELEMENTS.filter((e) => e.group === group);
                 return (
