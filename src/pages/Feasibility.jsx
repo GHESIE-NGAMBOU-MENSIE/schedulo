@@ -302,9 +302,9 @@ export default function Feasibility() {
             <Button variant="ghost" onClick={() => navigate(`/plan/${planId}/tasks`)}>
               <ArrowLeft className="w-4 h-4 mr-1" /> {t('back')}
             </Button>
-            <Button onClick={() => navigate(`/plan/${planId}/generate`)} className="bg-blue-600 hover:bg-blue-700 hidden">
-              {t('generateStudyPlan')} <ArrowRight className="w-4 h-4 ml-1" />
-            </Button>
+            
+
+            
           </div>
         </motion.div>
       </div>
