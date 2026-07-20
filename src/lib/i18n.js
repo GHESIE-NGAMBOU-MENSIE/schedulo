@@ -201,6 +201,11 @@ const T = {
     editTasks: 'Edit tasks',
     reCheck: 'Re-check',
     generateStudyPlan: 'Generate study plan',
+    generateCalendar: 'Generate calendar',
+    removeDocument: 'Remove document',
+    removeDocumentTitle: 'Remove document?',
+    removeDocumentConfirm: 'Removing this document will also remove the course information and tasks extracted from it. Do you want to continue?',
+    yesRemove: 'Yes, remove',
     // ── Plan Generation ────────────────────────────────────────────────
     planTitle: 'Your Study Plan',
     planDescGenerate: "I'll build a context-aware study schedule by placing your tasks into the best available time slots.",
@@ -426,6 +431,11 @@ const T = {
     editTasks: 'Aufgaben bearbeiten',
     reCheck: 'Erneut prüfen',
     generateStudyPlan: 'Lernplan generieren',
+    generateCalendar: 'Kalender generieren',
+    removeDocument: 'Dokument entfernen',
+    removeDocumentTitle: 'Dokument entfernen?',
+    removeDocumentConfirm: 'Das Entfernen dieses Dokuments entfernt auch die daraus extrahierten Kursinformationen und Aufgaben. Möchtest du fortfahren?',
+    yesRemove: 'Ja, entfernen',
     // ── Plan Generation ────────────────────────────────────────────────
     planTitle: 'Dein Lernplan',
     planDescGenerate: 'Ich erstelle einen kontextbewussten Lernplan, indem ich deine Aufgaben in die besten verfügbaren Zeitfenster platziere.',

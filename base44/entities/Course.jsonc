@@ -96,6 +96,10 @@
         "format": "uri"
       }
     },
+    "file_extractions": {
+      "type": "object",
+      "description": "Maps file_url to the fields extracted from that file, so deleting a file can revert only its extracted data"
+    },
     "confirmed": {
       "type": "boolean",
       "default": false

@@ -112,18 +112,6 @@ export default function Feasibility() {
 
     const hoursPerWeek = totalRemainingWorkload / totalWeeks;
 
-    // ── Deadline issues ───────────────────────────────────────────────────
-    const now = new Date();
-    const deadlineIssues = [];
-    tasks.forEach((t) => {
-      if (t.deadline) {
-        const dl = new Date(t.deadline);
-        const daysUntil = Math.ceil((dl - now) / (1000 * 60 * 60 * 24));
-        if (daysUntil < 3) deadlineIssues.push(`"${t.title}" due in ${daysUntil} day${daysUntil === 1 ? '' : 's'} — very tight!`);else
-        if (daysUntil < 7) deadlineIssues.push(`"${t.title}" due in ${daysUntil} days — start soon.`);
-      }
-    });
-
     // ── Status determination ──────────────────────────────────────────────
     let status = 'feasible';
     const issues = [];
@@ -136,11 +124,6 @@ export default function Feasibility() {
       suggestions.push('Increase your daily study window or add more study days.');
       suggestions.push('Reduce no-study days where possible.');
       suggestions.push('Check if any course CPs can be reduced or deferred.');
-    }
-
-    if (deadlineIssues.length > 0) {
-      issues.push(...deadlineIssues);
-      suggestions.push('Prioritize tasks with the closest deadlines first.');
     }
 
     const missingExam = coursesWithMeta.filter((c) => !c.examDate && c.examType !== 'none');
@@ -206,6 +189,22 @@ export default function Feasibility() {
 
           {result &&
           <>
+              {/* Action buttons — above the feasibility message */}
+              <div className="flex flex-wrap gap-2 mb-6">
+                <Button variant="outline" onClick={() => navigate(`/plan/${planId}/preferences`)}>
+                  {t('adjustPreferences')}
+                </Button>
+                <Button variant="outline" onClick={() => navigate(`/plan/${planId}/tasks`)}>
+                  {t('editTasks')}
+                </Button>
+                <Button variant="outline" onClick={() => {setResult(null);runCheck();}}>
+                  <RefreshCw className="w-4 h-4 mr-1" /> {t('reCheck')}
+                </Button>
+                <Button onClick={() => navigate(`/plan/${planId}/generate`)} className="bg-blue-600 hover:bg-blue-700">
+                  {t('generateCalendar')} <ArrowRight className="w-4 h-4 ml-1" />
+                </Button>
+              </div>
+
               {/* Status */}
               <div className={`${statusConfig[result.status].bg} ${statusConfig[result.status].border} border rounded-xl p-6 mb-6`}>
                 <div className="flex items-center gap-3 mb-2">
@@ -214,8 +213,6 @@ export default function Feasibility() {
                 </div>
                 <p className="text-sm text-gray-600">{statusConfig[result.status].desc}</p>
               </div>
-
-
 
               {/* Per-course breakdown */}
               {result.coursesWithMeta && result.coursesWithMeta.length > 0 &&
@@ -284,17 +281,6 @@ export default function Feasibility() {
                 </div>
             }
 
-              <div className="flex flex-wrap gap-2 mb-6">
-                <Button variant="outline" onClick={() => navigate(`/plan/${planId}/preferences`)}>
-                  {t('adjustPreferences')}
-                </Button>
-                <Button variant="outline" onClick={() => navigate(`/plan/${planId}/tasks`)}>
-                  {t('editTasks')}
-                </Button>
-                <Button variant="outline" onClick={() => {setResult(null);runCheck();}}>
-                  <RefreshCw className="w-4 h-4 mr-1" /> {t('reCheck')}
-                </Button>
-              </div>
             </>
           }
 

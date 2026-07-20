@@ -78,9 +78,11 @@ function CourseCard({ course, onDelete, onSave }) {
   const [difficulty, setDifficulty] = useState(course.difficulty || 'medium');
   const [materialsText, setMaterialsText] = useState(course.materials_text || '');
   const [files, setFiles] = useState(course.material_files || []);
+  const [fileExtractions, setFileExtractions] = useState(course.file_extractions || {});
   const [uploading, setUploading] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
   // Course content counts
   const [numChapters, setNumChapters] = useState(course.num_chapters?.toString() || '');
   const [numExercises, setNumExercises] = useState(course.num_exercises?.toString() || '');
@@ -128,21 +130,70 @@ function CourseCard({ course, onDelete, onSave }) {
             }
           }
         });
-        if (result.course_name) setName(result.course_name);
-        if (result.credit_points) setCredits(result.credit_points.toString());
-        if (result.course_type_key) {setCourseType(result.course_type_key);}
-        if (result.structure_elements?.length) setStructure(result.structure_elements);
-        if (result.difficulty) setDifficulty(result.difficulty);
-        if (result.num_chapters) setNumChapters(result.num_chapters.toString());
-        if (result.num_exercises) setNumExercises(result.num_exercises.toString());
-        if (result.num_assignments) setNumAssignments(result.num_assignments.toString());
-        if (result.num_quizzes) setNumQuizzes(result.num_quizzes.toString());
-        if (result.description) setMaterialsText((prev) => prev || result.description);
+        const extraction = {};
+        if (result.course_name) { setName(result.course_name); extraction.course_name = result.course_name; }
+        if (result.credit_points) { setCredits(result.credit_points.toString()); extraction.credit_points = result.credit_points.toString(); }
+        if (result.course_type_key) { setCourseType(result.course_type_key); extraction.course_type_key = result.course_type_key; }
+        if (result.structure_elements?.length) { setStructure(result.structure_elements); extraction.structure_elements = result.structure_elements; }
+        if (result.difficulty) { setDifficulty(result.difficulty); extraction.difficulty = result.difficulty; }
+        if (result.num_chapters) { setNumChapters(result.num_chapters.toString()); extraction.num_chapters = result.num_chapters.toString(); }
+        if (result.num_exercises) { setNumExercises(result.num_exercises.toString()); extraction.num_exercises = result.num_exercises.toString(); }
+        if (result.num_assignments) { setNumAssignments(result.num_assignments.toString()); extraction.num_assignments = result.num_assignments.toString(); }
+        if (result.num_quizzes) { setNumQuizzes(result.num_quizzes.toString()); extraction.num_quizzes = result.num_quizzes.toString(); }
+        if (result.description) { setMaterialsText((prev) => prev || result.description); extraction.description = result.description; }
+        setFileExtractions(prev => ({ ...prev, [file_url]: extraction }));
       } catch (err) {console.error('Extraction failed', err);}
       setExtracting(false);
     } catch (err) {console.error(err);}
     setUploading(false);
     e.target.value = '';
+  };
+
+  const handleFileDelete = (fileUrl) => {
+    setDeleteConfirm({ fileUrl, fileName: fileUrl.split('/').pop() });
+  };
+
+  const confirmFileDelete = async () => {
+    const { fileUrl } = deleteConfirm;
+    const extraction = fileExtractions[fileUrl] || {};
+    const remainingFiles = files.filter(f => f !== fileUrl);
+    setFiles(remainingFiles);
+
+    const otherExtractions = Object.entries(fileExtractions)
+      .filter(([url]) => url !== fileUrl && remainingFiles.includes(url))
+      .map(([, ext]) => ext);
+    const isCoveredByOther = (field, value) => otherExtractions.some(ext => ext[field] === value);
+
+    if (extraction.credit_points && !isCoveredByOther('credit_points', extraction.credit_points)) setCredits('');
+    if (extraction.course_type_key && !isCoveredByOther('course_type_key', extraction.course_type_key)) setCourseType('');
+    if (extraction.structure_elements && !isCoveredByOther('structure_elements', extraction.structure_elements)) setStructure(suggestStructure(extraction.course_type_key || ''));
+    if (extraction.difficulty && !isCoveredByOther('difficulty', extraction.difficulty)) setDifficulty('medium');
+    if (extraction.num_chapters && !isCoveredByOther('num_chapters', extraction.num_chapters)) setNumChapters('');
+    if (extraction.num_exercises && !isCoveredByOther('num_exercises', extraction.num_exercises)) setNumExercises('');
+    if (extraction.num_assignments && !isCoveredByOther('num_assignments', extraction.num_assignments)) setNumAssignments('');
+    if (extraction.num_quizzes && !isCoveredByOther('num_quizzes', extraction.num_quizzes)) setNumQuizzes('');
+    if (extraction.description && !isCoveredByOther('description', extraction.description)) setMaterialsText('');
+
+    setFileExtractions(prev => {
+      const next = { ...prev };
+      delete next[fileUrl];
+      return next;
+    });
+
+    // Persist immediately: mark course as needing re-extraction and delete stale tasks
+    try {
+      await base44.entities.Course.update(course.id, {
+        material_files: remainingFiles,
+        file_extractions: Object.fromEntries(Object.entries(fileExtractions).filter(([url]) => url !== fileUrl)),
+        tasks_extracted: false,
+      });
+      const existingTasks = await base44.entities.StudyTask.filter({ course_id: course.id });
+      if (existingTasks.length > 0) {
+        await base44.entities.StudyTask.deleteMany({ course_id: course.id });
+      }
+    } catch (err) { console.error('Failed to update after file deletion', err); }
+
+    setDeleteConfirm(null);
   };
 
   const handleSave = async () => {
@@ -159,6 +210,7 @@ function CourseCard({ course, onDelete, onSave }) {
       difficulty,
       materials_text: materialsText,
       material_files: files,
+      file_extractions: fileExtractions,
       num_chapters: numChapters ? Number(numChapters) : null,
       num_exercises: numExercises ? Number(numExercises) : null,
       num_assignments: numAssignments ? Number(numAssignments) : null,
@@ -355,12 +407,10 @@ function CourseCard({ course, onDelete, onSave }) {
               {/* ── Documents ── */}
               <div>
                 <Label className="text-xs text-gray-600 block mb-2">Upload documents <span className="text-gray-400">(syllabus, semester plan, etc.)</span></Label>
-                <label className="cursor-pointer inline-flex">
+                <label className="cursor-pointer inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-xs font-medium">
                   <input type="file" accept=".pdf,.doc,.docx,.txt,.png,.jpg" onChange={handleFileUpload} className="hidden" />
-                  <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-xs font-medium">
-                    {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-                    {uploading ? 'Uploading…' : 'Upload file'}
-                  </div>
+                  {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                  {uploading ? 'Uploading…' : 'Upload file'}
                 </label>
                 {files.length > 0 &&
               <div className="mt-2 space-y-1">
@@ -368,7 +418,7 @@ function CourseCard({ course, onDelete, onSave }) {
                 <div key={i} className="flex items-center gap-2 text-xs text-gray-500">
                         <FileText className="w-3.5 h-3.5" />
                         <span className="truncate max-w-xs">{f.split('/').pop()}</span>
-                        <button onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-600">Remove</button>
+                        <button onClick={() => handleFileDelete(f)} className="text-red-400 hover:text-red-600">Remove</button>
                       </div>
                 )}
                   </div>

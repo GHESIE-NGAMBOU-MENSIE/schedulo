@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { t, useLang } from '@/lib/i18n';
-import { BookOpen, ArrowRight, ArrowLeft, Upload, FileText, Loader2 } from 'lucide-react';
+import { BookOpen, ArrowRight, ArrowLeft, Upload, FileText, Loader2, AlertTriangle, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -24,21 +24,21 @@ const COURSE_TYPES = [
 
 const STRUCTURE_ELEMENTS = [
   { key: 'lectures',             label: 'Lectures',                group: 'Attendance' },
-  { key: 'exercises',            label: 'Exercises / tutorials',   group: 'Attendance' },
-  { key: 'lab_work',             label: 'Lab work',                group: 'Attendance' },
-  { key: 'supervision_meetings', label: 'Supervision meetings',    group: 'Attendance' },
+  { key: 'exercises',            label: 'Exercises / tutorial',   group: 'Attendance' },
+  { key: 'lab_work',             label: 'Lab work',               group: 'Attendance' },
+  { key: 'supervision_meetings', label: 'Supervision meetings',   group: 'Attendance' },
   { key: 'assignments',          label: 'Assignments / submissions', group: 'Submissions' },
-  { key: 'quizzes',              label: 'Quizzes',                 group: 'Submissions' },
-  { key: 'testate',              label: 'Tests',                   group: 'Submissions' },
-  { key: 'seminar_presentation', label: 'Presentation',            group: 'Submissions' },
-  { key: 'paper_essay',          label: 'Essay',                   group: 'Submissions' },
-  { key: 'project_work',         label: 'Project work',            group: 'Project / Thesis' },
-  { key: 'implementation',       label: 'Implementation / dev',    group: 'Project / Thesis' },
-  { key: 'thesis_writing',       label: 'Thesis writing',          group: 'Project / Thesis' },
-  { key: 'literature_work',      label: 'Literature Research',     group: 'Project / Thesis' },
-  { key: 'final_exam',           label: 'Final exam',              group: 'Assessment' },
-  { key: 'oral_exam',            label: 'Oral exam',               group: 'Assessment' },
-  { key: 'revision_buffer',      label: 'Revision / buffer',       group: 'Other' },
+  { key: 'quizzes',              label: 'Quizzes',                group: 'Submissions' },
+  { key: 'testate',              label: 'Tests',                 group: 'Submissions' },
+  { key: 'seminar_presentation', label: 'Presentation',          group: 'Submissions' },
+  { key: 'paper_essay',          label: 'Essay',                 group: 'Submissions' },
+  { key: 'project_work',         label: 'Project work',          group: 'Project / Thesis' },
+  { key: 'implementation',       label: 'Implementation / dev',  group: 'Project / Thesis' },
+  { key: 'thesis_writing',       label: 'Thesis writing',        group: 'Project / Thesis' },
+  { key: 'literature_work',      label: 'Literature Research',  group: 'Project / Thesis' },
+  { key: 'final_exam',           label: 'Final exam',           group: 'Assessment' },
+  { key: 'oral_exam',            label: 'Oral exam',            group: 'Assessment' },
+  { key: 'revision_buffer',      label: 'Revision / buffer',    group: 'Other' },
 ];
 
 const STRUCTURE_GROUPS = ['Attendance', 'Submissions', 'Project / Thesis', 'Assessment', 'Other'];
@@ -64,13 +64,13 @@ function suggestStructure(courseTypeKey) {
 export default function CourseDetail() {
   const { planId, courseId } = useParams();
   const navigate = useNavigate();
-  useLang(); // re-render on language change
+  useLang();
   const [course, setCourse] = useState(null);
   const [allCourses, setAllCourses] = useState([]);
   const [selectedType, setSelectedType] = useState('');
   const [credits, setCredits] = useState('');
   const [examDate, setExamDate] = useState('');
-  const [examType, setExamType] = useState('unknown'); // 'exact' | 'window' | 'none' | 'submission'
+  const [examType, setExamType] = useState('unknown');
   const [examWindowStart, setExamWindowStart] = useState('');
   const [examWindowEnd, setExamWindowEnd] = useState('');
   const [courseStartDate, setCourseStartDate] = useState('');
@@ -81,13 +81,16 @@ export default function CourseDetail() {
   const [priority, setPriority] = useState('medium');
   const [materialsText, setMaterialsText] = useState('');
   const [files, setFiles] = useState([]);
+  const [fileExtractions, setFileExtractions] = useState({});
   const [uploading, setUploading] = useState(false);
+  const [extracting, setExtracting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [courseStructure, setCourseStructure] = useState([]);
   const [numChapters, setNumChapters] = useState('');
   const [numExercises, setNumExercises] = useState('');
   const [numAssignments, setNumAssignments] = useState('');
   const [numQuizzes, setNumQuizzes] = useState('');
+  const [deleteConfirm, setDeleteConfirm] = useState(null); // { fileUrl, fileName }
 
   useEffect(() => {
     const load = async () => {
@@ -96,7 +99,6 @@ export default function CourseDetail() {
       setSelectedType(c.course_type?.[0] || '');
       setCredits(c.credit_points?.toString() || '');
       setExamDate(c.exam_date || '');
-      // Derive examType from saved data
       if (c.exam_type) {
         setExamType(c.exam_type);
       } else if (c.exam_date) {
@@ -114,6 +116,7 @@ export default function CourseDetail() {
       setPriority(c.priority || 'medium');
       setMaterialsText(c.materials_text || '');
       setFiles(c.material_files || []);
+      setFileExtractions(c.file_extractions || {});
       setNumChapters(c.num_chapters?.toString() || '');
       setNumExercises(c.num_exercises?.toString() || '');
       setNumAssignments(c.num_assignments?.toString() || '');
@@ -147,11 +150,119 @@ export default function CourseDetail() {
     setUploading(true);
     try {
       const { file_url } = await base44.integrations.Core.UploadFile({ file });
-      setFiles(prev => [...prev, file_url]);
-    } catch (err) {
-      console.error(err);
-    }
+      const newFiles = [...files, file_url];
+      setFiles(newFiles);
+      setExtracting(true);
+      try {
+        const result = await base44.integrations.Core.InvokeLLM({
+          prompt: `Extract course information from this document. Return JSON with: course_name (string), credit_points (number or null), course_type_key (one of: lecture_course, lecture_exercises, seminar, project_course, lab_course, bachelor_thesis, master_thesis, other), structure_elements (array of keys from: lectures, exercises, lab_work, supervision_meetings, assignments, quizzes, testate, seminar_presentation, paper_essay, project_work, implementation, thesis_writing, literature_work, final_exam, oral_exam, revision_buffer), difficulty (easy/medium/difficult), num_chapters (number or null), num_exercises (number or null), num_assignments (number or null), num_quizzes (number or null), description (string).`,
+          file_urls: [file_url],
+          response_json_schema: {
+            type: 'object',
+            properties: {
+              course_name: { type: 'string' },
+              credit_points: { type: 'number' },
+              course_type_key: { type: 'string' },
+              structure_elements: { type: 'array', items: { type: 'string' } },
+              difficulty: { type: 'string' },
+              num_chapters: { type: 'number' },
+              num_exercises: { type: 'number' },
+              num_assignments: { type: 'number' },
+              num_quizzes: { type: 'number' },
+              description: { type: 'string' }
+            }
+          }
+        });
+        // Track which fields were extracted from this file
+        const extraction = {};
+        if (result.credit_points) { setCredits(result.credit_points.toString()); extraction.credit_points = result.credit_points.toString(); }
+        if (result.course_type_key) { setSelectedType(result.course_type_key); extraction.course_type_key = result.course_type_key; }
+        if (result.structure_elements?.length) { setCourseStructure(result.structure_elements); extraction.structure_elements = result.structure_elements; }
+        if (result.difficulty) { setDifficulty(result.difficulty); extraction.difficulty = result.difficulty; }
+        if (result.num_chapters) { setNumChapters(result.num_chapters.toString()); extraction.num_chapters = result.num_chapters.toString(); }
+        if (result.num_exercises) { setNumExercises(result.num_exercises.toString()); extraction.num_exercises = result.num_exercises.toString(); }
+        if (result.num_assignments) { setNumAssignments(result.num_assignments.toString()); extraction.num_assignments = result.num_assignments.toString(); }
+        if (result.num_quizzes) { setNumQuizzes(result.num_quizzes.toString()); extraction.num_quizzes = result.num_quizzes.toString(); }
+        if (result.description) { setMaterialsText((prev) => prev || result.description); extraction.description = result.description; }
+        setFileExtractions(prev => ({ ...prev, [file_url]: extraction }));
+      } catch (err) { console.error('Extraction failed', err); }
+      setExtracting(false);
+    } catch (err) { console.error(err); }
     setUploading(false);
+    e.target.value = '';
+  };
+
+  const handleFileDelete = (fileUrl) => {
+    setDeleteConfirm({ fileUrl, fileName: fileUrl.split('/').pop() });
+  };
+
+  const confirmFileDelete = async () => {
+    const { fileUrl } = deleteConfirm;
+    const extraction = fileExtractions[fileUrl] || {};
+    const remainingFiles = files.filter(f => f !== fileUrl);
+    setFiles(remainingFiles);
+
+    // Revert fields that were extracted from this file (only if not manually changed)
+    // Check if any remaining file also extracted the same value
+    const otherExtractions = Object.entries(fileExtractions)
+      .filter(([url]) => url !== fileUrl && remainingFiles.includes(url))
+      .map(([, ext]) => ext);
+
+    const isCoveredByOther = (field, value) =>
+      otherExtractions.some(ext => ext[field] === value);
+
+    if (extraction.credit_points && !isCoveredByOther('credit_points', extraction.credit_points)) {
+      setCredits('');
+    }
+    if (extraction.course_type_key && !isCoveredByOther('course_type_key', extraction.course_type_key)) {
+      setSelectedType('');
+    }
+    if (extraction.structure_elements && !isCoveredByOther('structure_elements', extraction.structure_elements)) {
+      setCourseStructure(suggestStructure(extraction.course_type_key || ''));
+    }
+    if (extraction.difficulty && !isCoveredByOther('difficulty', extraction.difficulty)) {
+      setDifficulty('medium');
+    }
+    if (extraction.num_chapters && !isCoveredByOther('num_chapters', extraction.num_chapters)) {
+      setNumChapters('');
+    }
+    if (extraction.num_exercises && !isCoveredByOther('num_exercises', extraction.num_exercises)) {
+      setNumExercises('');
+    }
+    if (extraction.num_assignments && !isCoveredByOther('num_assignments', extraction.num_assignments)) {
+      setNumAssignments('');
+    }
+    if (extraction.num_quizzes && !isCoveredByOther('num_quizzes', extraction.num_quizzes)) {
+      setNumQuizzes('');
+    }
+    if (extraction.description && !isCoveredByOther('description', extraction.description)) {
+      setMaterialsText('');
+    }
+
+    // Remove from fileExtractions
+    setFileExtractions(prev => {
+      const next = { ...prev };
+      delete next[fileUrl];
+      return next;
+    });
+
+    // Mark course as needing re-extraction (tasks will be stale)
+    try {
+      await base44.entities.Course.update(courseId, {
+        material_files: remainingFiles,
+        file_extractions: Object.fromEntries(
+          Object.entries(fileExtractions).filter(([url]) => url !== fileUrl)
+        ),
+        tasks_extracted: false,
+      });
+      // Delete existing tasks for this course since they were based on the removed document
+      const existingTasks = await base44.entities.StudyTask.filter({ course_id: courseId });
+      if (existingTasks.length > 0) {
+        await base44.entities.StudyTask.deleteMany({ course_id: courseId });
+      }
+    } catch (err) { console.error('Failed to update course after file deletion', err); }
+
+    setDeleteConfirm(null);
   };
 
   const saveCourse = async () => {
@@ -175,6 +286,7 @@ export default function CourseDetail() {
       priority,
       materials_text: materialsText,
       material_files: files,
+      file_extractions: fileExtractions,
       confirmed: true
     });
   };
@@ -227,6 +339,51 @@ export default function CourseDetail() {
             title={course.name}
             description={t('courseDetailDesc')}
           />
+
+          {/* ECTS — directly after course name */}
+          <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-4">
+            <Label className="text-sm text-gray-600">{t('ects')}</Label>
+            <Input type="number" value={credits} onChange={e => setCredits(e.target.value)} placeholder="e.g., 5" className="mt-1" />
+          </div>
+
+          {/* Upload documents — directly after ECTS */}
+          <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-4">
+            <h3 className="font-semibold text-gray-900 mb-1">{t('courseMaterials')}</h3>
+            <p className="text-sm text-gray-400 mb-3">{t('courseMaterialsDesc')}</p>
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium">
+                  <input type="file" accept=".pdf,.doc,.docx,.txt,.png,.jpg" onChange={handleFileUpload} className="hidden" />
+                  {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                  {uploading ? t('uploading') : t('uploadFile')}
+                </label>
+                {extracting && (
+                  <span className="text-sm text-blue-500 flex items-center gap-1">
+                    <Loader2 className="w-3 h-3 animate-spin" /> Extracting…
+                  </span>
+                )}
+                {files.length > 0 && !extracting && (
+                  <span className="text-sm text-green-600">{files.length} {t('filesUploaded')}</span>
+                )}
+              </div>
+              {files.map((f, i) => (
+                <div key={i} className="flex items-center gap-2 text-sm text-gray-500">
+                  <FileText className="w-4 h-4" />
+                  <span className="truncate max-w-xs">{f.split('/').pop()}</span>
+                  <button onClick={() => handleFileDelete(f)} className="text-red-400 hover:text-red-600 text-xs flex items-center gap-0.5">
+                    <Trash2 className="w-3 h-3" /> {t('remove')}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Course description — directly after upload */}
+          <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-4">
+            <Label className="text-sm text-gray-600">{t('courseDescription')}</Label>
+            <p className="text-sm text-gray-400 mb-2">{t('courseDescriptionDesc')}</p>
+            <Textarea value={description} onChange={e => setDescription(e.target.value)} placeholder={t('courseDescriptionPlaceholder')} className="mt-1" rows={3} />
+          </div>
 
           {/* Course type */}
           <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-4">
@@ -311,14 +468,9 @@ export default function CourseDetail() {
             </div>
           </div>
 
-          {/* Details grid */}
+          {/* Details grid: exam, dates, difficulty, familiarity, priority */}
           <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <Label className="text-sm text-gray-600">{t('ects')}</Label>
-                <Input type="number" value={credits} onChange={e => setCredits(e.target.value)} placeholder="e.g., 5" className="mt-1" />
-              </div>
-
               {/* Exam / final assessment */}
               <div className="sm:col-span-2">
                 <Label className="text-sm text-gray-600 block mb-1">{t('finalAssessment')}</Label>
@@ -380,6 +532,14 @@ export default function CourseDetail() {
                 <Input type="date" value={courseEndDate} onChange={e => setCourseEndDate(e.target.value)} className="mt-1" />
               </div>
 
+              {/* Validation warning: exam outside course period */}
+              {courseStartDate && courseEndDate && examDate && (examDate < courseStartDate || examDate > courseEndDate) && (
+                <div className="sm:col-span-2 flex items-start gap-2 text-xs text-amber-600 bg-amber-50 rounded-lg p-2">
+                  <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                  <span>The exam date ({examDate}) is outside the course period ({courseStartDate} to {courseEndDate}). Please check the dates.</span>
+                </div>
+              )}
+
               <div>
                 <Label className="text-sm text-gray-600">Perceived difficulty</Label>
                 <Select value={difficulty} onValueChange={setDifficulty}>
@@ -416,44 +576,16 @@ export default function CourseDetail() {
             </div>
           </div>
 
-          {/* Description */}
+          {/* Materials text */}
           <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-4">
-            <Label className="text-sm text-gray-600">{t('courseDescription')}</Label>
-            <p className="text-sm text-gray-400 mb-2">{t('courseDescriptionDesc')}</p>
-            <Textarea value={description} onChange={e => setDescription(e.target.value)} placeholder={t('courseDescriptionPlaceholder')} className="mt-1" rows={3} />
-          </div>
-
-          {/* Materials */}
-          <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-4">
-            <h3 className="font-semibold text-gray-900 mb-1">{t('courseMaterials')}</h3>
-            <p className="text-sm text-gray-400 mb-3">{t('courseMaterialsDesc')}</p>
-            <div className="space-y-3">
-              <Textarea
-                value={materialsText}
-                onChange={e => setMaterialsText(e.target.value)}
-                placeholder={t('materialsPlaceholder')}
-                rows={5}
-              />
-              <div className="flex items-center gap-3">
-                <label className="cursor-pointer">
-                  <input type="file" accept=".pdf,.doc,.docx,.txt,.png,.jpg" onChange={handleFileUpload} className="hidden" />
-                  <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium">
-                    {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                    {t('uploadFile')}
-                  </div>
-                </label>
-                {files.length > 0 && (
-                  <span className="text-sm text-green-600">{files.length} {t('filesUploaded')}</span>
-                )}
-              </div>
-              {files.map((f, i) => (
-                <div key={i} className="flex items-center gap-2 text-sm text-gray-500">
-                  <FileText className="w-4 h-4" />
-                  <span className="truncate max-w-xs">{f.split('/').pop()}</span>
-                  <button onClick={() => setFiles(prev => prev.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-600 text-xs">Remove</button>
-                </div>
-              ))}
-            </div>
+            <Label className="text-sm text-gray-600">{t('courseMaterials')}</Label>
+            <Textarea
+              value={materialsText}
+              onChange={e => setMaterialsText(e.target.value)}
+              placeholder={t('materialsPlaceholder')}
+              rows={5}
+              className="mt-1"
+            />
           </div>
 
           <div className="flex justify-between items-center">
@@ -466,6 +598,33 @@ export default function CourseDetail() {
           </div>
         </motion.div>
       </div>
+
+      {/* Delete confirmation dialog */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full mx-4 p-6">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center flex-shrink-0">
+                <AlertTriangle className="w-5 h-5 text-red-500" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900">{t('removeDocumentTitle')}</h3>
+                <p className="text-sm text-gray-500 mt-1">{deleteConfirm.fileName}</p>
+              </div>
+            </div>
+            <p className="text-sm text-gray-600 mb-5">{t('removeDocumentConfirm')}</p>
+            <div className="flex gap-2 justify-end">
+              <Button variant="ghost" size="sm" onClick={() => setDeleteConfirm(null)}>
+                {t('cancel')}
+              </Button>
+              <Button variant="destructive" size="sm" onClick={confirmFileDelete}>
+                {t('yesRemove')}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <ContextChat phase="courseDetail" planId={planId} suggestions={[
         "What are credit points?",
         "What should I upload?",
