@@ -417,7 +417,7 @@ export default function StudyDates() {
 
           {/* Manual event form */}
           {showManual &&
-          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="bg-white rounded-xl border border-blue-200 p-6 shadow-sm mb-6">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-white rounded-xl border border-blue-200 p-6 shadow-sm mb-6">
               <h3 className="font-semibold text-gray-900 mb-4">{editIdx !== null ? 'Edit event' : 'Add a fixed event'}</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* Event Name */}
