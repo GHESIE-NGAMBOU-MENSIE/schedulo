@@ -341,7 +341,7 @@ function CourseCard({ course, onDelete, onSave }) {
               </div>
 
               {/* ── Difficulty ── */}
-              <div className="max-w-xs">
+              <div className="max-w-xs hidden">
                 <Label className="text-xs text-gray-600">Perceived difficulty</Label>
                 <Select value={difficulty} onValueChange={setDifficulty}>
                   <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue /></SelectTrigger>
