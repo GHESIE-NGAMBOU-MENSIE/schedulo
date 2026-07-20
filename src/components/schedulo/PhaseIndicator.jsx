@@ -1,14 +1,24 @@
 import React from 'react';
 import { Check } from 'lucide-react';
+import { t, useLang } from '@/lib/i18n';
 
-const phases = [
-  { key: 'setup', label: 'Planning Setup', steps: [1, 2, 3] },
-  { key: 'courses', label: 'Course Information', steps: [4, 5, 6] },
-  { key: 'generation', label: 'Plan Generation', steps: [7, 8] },
-  { key: 'active', label: 'Active Semester', steps: [9, 10, 11] },
+const phaseKeys = [
+  { key: 'setup', steps: [1, 2, 3] },
+  { key: 'courses', steps: [4, 5, 6] },
+  { key: 'generation', steps: [7, 8] },
+  { key: 'active', steps: [9, 10, 11] },
 ];
 
+const phaseLabelMap = {
+  setup: 'phaseSetup',
+  courses: 'phaseCourses',
+  generation: 'phaseGeneration',
+  active: 'phaseActive',
+};
+
 export default function PhaseIndicator({ currentPhase, currentStep, planId }) {
+  useLang(); // re-render on language change
+  const phases = phaseKeys.map(p => ({ ...p, label: t(phaseLabelMap[p.key]) }));
   const phaseIndex = phases.findIndex(p => p.key === currentPhase);
 
   const phaseRoutes = {

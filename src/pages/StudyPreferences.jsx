@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { t } from '@/lib/i18n';
+import { t, useLang } from '@/lib/i18n';
 import { useParams, useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { Settings, ArrowRight, ArrowLeft, Clock, Coffee, BanIcon } from 'lucide-react';
@@ -23,6 +23,7 @@ Object.fromEntries(
 export default function StudyPreferences() {
   const { planId } = useParams();
   const navigate = useNavigate();
+  useLang(); // re-render on language change
   const [schedule, setSchedule] = useState(defaultSchedule());
   const [maxHours, setMaxHours] = useState(6);
   const [maxBlockHours, setMaxBlockHours] = useState(2);
@@ -87,8 +88,8 @@ export default function StudyPreferences() {
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
           <StepHeader
             icon={Settings}
-            title="Study Preferences"
-            description="Tell me when and how you like to study. Set your availability for each day of the week." />
+            title={t('studyPrefsTitle')}
+            description={t('studyPrefsDesc')} />
           
 
           {/* Progress */}
@@ -102,8 +103,8 @@ export default function StudyPreferences() {
 
           {/* Weekly availability */}
           <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-6">
-            <h3 className="font-semibold text-gray-900 mb-1">Weekly availability</h3>
-            <p className="text-sm text-gray-400 mb-4">Set your study time window for each day, or mark it as a No Study Day.</p>
+            <h3 className="font-semibold text-gray-900 mb-1">{t('weeklyAvailability')}</h3>
+            <p className="text-sm text-gray-400 mb-4">{t('weeklyAvailabilityDesc')}</p>
             <div className="space-y-3">
               {DAYS.map((day) => {
                 const isNoStudy = schedule[day]?.noStudy;
@@ -147,7 +148,7 @@ export default function StudyPreferences() {
                       }>
                       
                       <BanIcon className="w-3 h-3" />
-                      No Study Day
+                      {t('noStudyDay')}
                     </button>
                   </div>);
 
@@ -158,7 +159,7 @@ export default function StudyPreferences() {
           {/* Max hours */}
           <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-6">
             <h3 className="font-semibold text-gray-900 mb-1">{t('maxHoursLabel')}</h3>
-            
+            <p className="text-sm text-gray-400 mb-3">{t('maxHoursDesc')}</p>
             <div className="flex items-center gap-4">
               <Slider
                 value={[maxHours]}
@@ -174,8 +175,8 @@ export default function StudyPreferences() {
 
           {/* Max block hours */}
           <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-6">
-            <h3 className="font-semibold text-gray-900 mb-1">Max hours per study block</h3>
-            <p className="text-sm text-gray-400 mb-3">Tasks longer than this will be automatically split into shorter blocks.</p>
+            <h3 className="font-semibold text-gray-900 mb-1">{t('maxBlockLabel')}</h3>
+            <p className="text-sm text-gray-400 mb-3">{t('maxBlockDesc')}</p>
             <div className="flex items-center gap-4">
               <Slider
                 value={[maxBlockHours]}
@@ -193,7 +194,7 @@ export default function StudyPreferences() {
             <h3 className="font-semibold text-gray-900 mb-1 flex items-center gap-2">
               <Coffee className="w-4 h-4 text-amber-500" /> {t('breakLabel')}
             </h3>
-            
+            <p className="text-sm text-gray-400 mb-3">{t('breakDesc')}</p>
             <div className="flex items-center gap-4">
               <Slider
                 value={[breakDuration]}
@@ -214,10 +215,10 @@ export default function StudyPreferences() {
           {/* Navigation */}
           <div className="flex justify-between items-center">
             <Button variant="ghost" onClick={() => navigate(`/plan/${planId}/dates`)}>
-              <ArrowLeft className="w-4 h-4 mr-1" /> Back
+              <ArrowLeft className="w-4 h-4 mr-1" /> {t('back')}
             </Button>
             <Button onClick={handleNext} className="bg-blue-600 hover:bg-blue-700">
-              Continue to Courses <ArrowRight className="w-4 h-4 ml-1" />
+              {t('continueToCourses')} <ArrowRight className="w-4 h-4 ml-1" />
             </Button>
           </div>
         </motion.div>

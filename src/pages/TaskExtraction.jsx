@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
+import { t, useLang } from '@/lib/i18n';
 import { ListChecks, ArrowRight, ArrowLeft, Loader2, Plus, AlertTriangle, RefreshCw, AlertCircle, Check } from 'lucide-react';
 import CourseTaskSection from '@/components/schedulo/CourseTaskSection';
 import { Button } from '@/components/ui/button';
@@ -159,6 +160,16 @@ ${projectRules}
 6. EXAM PREP → task_type="test", titles like "Review all chapters", "Practice past exam questions", "Final revision". ONLY in Phase 2/3 weeks (Week ${examPrepStartWeek}+).
 7. REVISION/BUFFER → task_type="revision", placed in final weeks only.
 
+## DISTRIBUTION RULES — CRITICAL
+1. Do NOT place all tasks in only the first few weeks. Distribute tasks as evenly as possible across ALL ${courseWeeks} study weeks.
+2. Every course should receive study tasks throughout the entire semester where appropriate.
+3. Chapters and exercise sheets must be scheduled in their correct sequence (Chapter 1 before Chapter 2, etc.).
+4. Tasks related to an exam or deadline must be completed BEFORE that exam or deadline.
+5. If all extracted course tasks are completed before the end of the study period, fill the remaining suitable study weeks with REVISION tasks.
+6. Revision tasks should refer to the relevant course and previously covered content (e.g., "Review Chapter 1-3", "Revise Exercise Sheets 1-5").
+7. Do NOT create revision tasks before the related content has been studied. A revision task for Chapter 5 must come AFTER the week where Chapter 5 was studied.
+8. Do NOT leave any week empty if there is content to study or revise.
+
 ## QUALITY RULES
 - Max 3h per task. Split larger blocks.
 - Do NOT invent chapter/topic names not present in the materials. Use neutral titles.
@@ -234,6 +245,7 @@ function buildFallbackTasks(course, selfStudyBudget) {
 export default function TaskExtraction() {
   const { planId } = useParams();
   const navigate = useNavigate();
+  useLang(); // re-render on language change
   const [courses, setCourses] = useState([]);
   const [tasks, setTasks] = useState({});
   const [extracting, setExtracting] = useState(false);
@@ -548,15 +560,14 @@ export default function TaskExtraction() {
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
           <StepHeader
             icon={ListChecks}
-            title="Task Extraction"
-            description="Tasks are generated based on your confirmed course structure and credit points. Review and edit each course before continuing." />
+            title={t('taskExtractionTitle')}
+            description={t('taskExtractionDesc')} />
 
           {/* Loading state */}
           {!extracted && extracting &&
           <div className="bg-white rounded-xl border border-blue-100 p-8 shadow-sm text-center mb-6">
               <Loader2 className="w-10 h-10 animate-spin text-blue-500 mx-auto mb-3" />
-              <p className="text-gray-700 font-medium">Extracting tasks from course materials...</p>
-              <p className="text-sm text-gray-400 mt-1">Analyzing course structure, chapters, assignments, and deadlines.</p>
+              <p className="text-gray-700 font-medium">{t('extractingTasks')}</p>
             </div>
           }
 
@@ -566,14 +577,14 @@ export default function TaskExtraction() {
               <div className="flex items-start gap-3">
                 <AlertTriangle className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" />
                 <div className="flex-1">
-                  <p className="font-semibold text-amber-800 mb-1">Replace all existing tasks?</p>
-                  <p className="text-sm text-amber-700 mb-3">This will delete all {totalTasks} tasks and re-extract from scratch.</p>
+                  <p className="font-semibold text-amber-800 mb-1">{t('replaceAllTasks')}</p>
+                  <p className="text-sm text-amber-700 mb-3">{t('replaceAllDesc', { count: totalTasks })}</p>
                   <div className="flex gap-2">
                     <Button size="sm" className="bg-amber-600 hover:bg-amber-700"
                   onClick={() => extractAllCourses(courses, plan, calendarHoursByCourse, true)}>
-                      Yes, re-extract all
+                      {t('yesReExtract')}
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => setShowReExtractConfirm(false)}>Cancel</Button>
+                    <Button size="sm" variant="outline" onClick={() => setShowReExtractConfirm(false)}>{t('cancel')}</Button>
                   </div>
                 </div>
               </div>
@@ -694,11 +705,11 @@ export default function TaskExtraction() {
 
               <div className="flex justify-between items-center mt-6">
                 <Button variant="ghost" onClick={() => navigate(`/plan/${planId}/courses`)}>
-                  <ArrowLeft className="w-4 h-4 mr-1" /> Back
-                </Button>
-                <Button onClick={confirmAll} disabled={confirming || totalTasks === 0} className="bg-blue-600 hover:bg-blue-700">
-                  {confirming ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" />Confirming...</> : <>Confirm & continue <ArrowRight className="w-4 h-4 ml-1" /></>}
-                </Button>
+                   <ArrowLeft className="w-4 h-4 mr-1" /> {t('back')}
+                 </Button>
+                 <Button onClick={confirmAll} disabled={confirming || totalTasks === 0} className="bg-blue-600 hover:bg-blue-700">
+                   {confirming ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" />{t('confirming')}</> : <>{t('confirmContinue')} <ArrowRight className="w-4 h-4 ml-1" /></>}
+                 </Button>
               </div>
             </>
           }

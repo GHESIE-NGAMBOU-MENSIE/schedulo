@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
-import { t } from '@/lib/i18n';
+import { t, useLang } from '@/lib/i18n';
 import { BookOpen, Plus, Trash2, ArrowRight, ArrowLeft, ChevronDown, ChevronUp, GraduationCap, Upload, Loader2, FileText, Sparkles, AlertCircle, Hash } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,8 +19,7 @@ const COURSE_TYPES = [
 { key: 'lecture_course', label: 'Lecture course' },
 { key: 'lecture_exercises', label: 'Lecture with exercises' },
 { key: 'seminar', label: 'Seminar' },
-{ key: 'project_course', label: 'Project course' },
-{ key: 'lab_course', label: 'Lab course' },
+{ key: 'project_course', label: 'Project' },
 { key: 'bachelor_thesis', label: 'Thesis' },
 { key: 'other', label: 'Other' }];
 
@@ -34,13 +33,13 @@ const STRUCTURE_ELEMENTS = [
 { key: 'supervision_meetings', label: 'Supervision meetings', group: 'Attendance' },
 { key: 'assignments', label: 'Assignments / submissions', group: 'Submissions' },
 { key: 'quizzes', label: 'Quizzes', group: 'Submissions' },
-{ key: 'testate', label: 'Tests / Testate', group: 'Submissions' },
+{ key: 'testate', label: 'Tests', group: 'Submissions' },
 { key: 'seminar_presentation', label: 'Presentation', group: 'Submissions' },
-{ key: 'paper_essay', label: 'Paper / essay', group: 'Submissions' },
+{ key: 'paper_essay', label: 'Essay', group: 'Submissions' },
 { key: 'project_work', label: 'Project work', group: 'Project / Thesis' },
 { key: 'implementation', label: 'Implementation / dev', group: 'Project / Thesis' },
 { key: 'thesis_writing', label: 'Thesis writing', group: 'Project / Thesis' },
-{ key: 'literature_work', label: 'Literature / research', group: 'Project / Thesis' },
+{ key: 'literature_work', label: 'Literature Research', group: 'Project / Thesis' },
 { key: 'final_exam', label: 'Final exam', group: 'Assessment' },
 { key: 'oral_exam', label: 'Oral exam', group: 'Assessment' },
 { key: 'revision_buffer', label: 'Revision / buffer', group: 'Other' }];
@@ -229,7 +228,7 @@ function CourseCard({ course, onDelete, onSave }) {
                   <Input value={name} onChange={(e) => setName(e.target.value)} className="mt-1 h-8 text-sm" />
                 </div>
                 <div>
-                  <Label className="text-xs text-gray-600">ECTS / Credit points</Label>
+                  <Label className="text-xs text-gray-600">ECTS</Label>
                   <Input type="number" value={credits} onChange={(e) => setCredits(e.target.value)} placeholder="e.g. 5" className="mt-1 h-8 text-sm" />
                 </div>
               </div>
@@ -256,7 +255,7 @@ function CourseCard({ course, onDelete, onSave }) {
               {/* ── Course structure ── */}
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <Label className="text-xs text-gray-600">Course structure / workload elements</Label>
+                  <Label className="text-xs text-gray-600">Course structure</Label>
                   
 
 
@@ -324,14 +323,14 @@ function CourseCard({ course, onDelete, onSave }) {
 
               {/* ── Course content counts ── */}
               <div>
-                <Label className="text-xs text-gray-600 block mb-2">Course content <span className="text-gray-400 font-normal">(optional — helps with task extraction)</span></Label>
+                <Label className="text-xs text-gray-600 block mb-2">Course content</Label>
+                <p className="text-xs text-gray-400 mb-2">Enter the total number for each item in this course.</p>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {[
-                { label: 'Chapters / topics', value: numChapters, set: setNumChapters, show: structure.includes('lectures') || structure.includes('exercises') },
-                { label: 'Exercise sheets', value: numExercises, set: setNumExercises, show: structure.includes('exercises') },
-                { label: 'Assignments', value: numAssignments, set: setNumAssignments, show: structure.includes('assignments') },
-                { label: 'Quizzes / Testate', value: numQuizzes, set: setNumQuizzes, show: structure.includes('quizzes') || structure.includes('testate') }].
-                filter((f) => f.show).map((f) =>
+                { label: 'Chapters', value: numChapters, set: setNumChapters },
+                { label: 'Exercise sheets', value: numExercises, set: setNumExercises },
+                { label: 'Assignments', value: numAssignments, set: setNumAssignments }].
+                map((f) =>
                 <div key={f.label}>
                       <Label className="text-xs text-gray-500">{f.label}</Label>
                       <Input type="number" min={0} value={f.value} onChange={(e) => f.set(e.target.value)} placeholder="–" className="mt-1 h-8 text-sm" />
@@ -355,7 +354,7 @@ function CourseCard({ course, onDelete, onSave }) {
 
               {/* ── Documents ── */}
               <div>
-                <Label className="text-xs text-gray-600 block mb-2">Upload documents <span className="text-gray-400">(syllabus, semester plan, etc.) — AI will extract structure automatically</span></Label>
+                <Label className="text-xs text-gray-600 block mb-2">Upload documents <span className="text-gray-400">(syllabus, semester plan, etc.)</span></Label>
                 <label className="cursor-pointer inline-flex">
                   <input type="file" accept=".pdf,.doc,.docx,.txt,.png,.jpg" onChange={handleFileUpload} className="hidden" />
                   <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-xs font-medium">
@@ -378,9 +377,10 @@ function CourseCard({ course, onDelete, onSave }) {
 
               {/* ── Notes ── */}
               <div>
-                <Label className="text-xs text-gray-600">Notes / description <span className="text-gray-400">(optional)</span></Label>
+                <Label className="text-xs text-gray-600">Course description</Label>
+                <p className="text-xs text-gray-400 mb-1">Add any important details about the course.</p>
                 <Textarea value={materialsText} onChange={(e) => setMaterialsText(e.target.value)}
-              placeholder="Paste syllabus content, assignment list, deadlines, reading list…"
+              placeholder="e.g. course description, course structure, weekly tasks, projects, and exam requirements"
               rows={3} className="mt-1 text-sm" />
               </div>
 
@@ -402,6 +402,7 @@ function CourseCard({ course, onDelete, onSave }) {
 export default function CourseOverview() {
   const { planId } = useParams();
   const navigate = useNavigate();
+  useLang(); // re-render on language change
   const [courses, setCourses] = useState([]);
   const [newName, setNewName] = useState('');
   const [loading, setLoading] = useState(true);
@@ -419,10 +420,10 @@ export default function CourseOverview() {
 
   // Merge courses that are semantic duplicates (e.g. "Data Science Lecture" + "Data Science Exercise" → "Data Science")
   const mergeDuplicateCourses = async (list) => {
-    const STRIP_WORDS = /\b(vorlesung|lecture|course|übung|ubung|exercise|exercises|lab|praktikum|tutorial|seminar|kurs|class|module|unit|introduction|intro)\b/gi;
-    const normalize = (name) => (name || '').replace(STRIP_WORDS, '').replace(/[-_/\\]+/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+    const STRIP_WORDS = /\b(vorlesung|lecture|course|übung|ubung|exercise|exercises|lab|praktikum|tutorial|tutorium|seminar\s+group|seminar\s+gruppe|seminar|kurs|class|module|unit|introduction|intro)\b/gi;
+    const normalize = (name) => (name || '').replace(/[–—]/g, '-').replace(STRIP_WORDS, '').replace(/[-_/\\]+/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
     const toCanonical = (name) => {
-      const stripped = (name || '').replace(STRIP_WORDS, '').replace(/[-_/\\]+/g, ' ').replace(/\s+/g, ' ').trim();
+      const stripped = (name || '').replace(/[–—]/g, '-').replace(STRIP_WORDS, '').replace(/[-_/\\]+/g, ' ').replace(/\s+/g, ' ').trim();
       return stripped || name;
     };
 
@@ -517,13 +518,13 @@ export default function CourseOverview() {
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
           <StepHeader
             icon={BookOpen}
-            title="Your Courses"
-            description="Expand each course to set its type, structure, and exam info. The more you fill in, the more accurate your study plan will be." />
+            title={t('coursesTitle')}
+            description={t('coursesDesc')} />
 
           {/* Progress */}
           <div className="mb-6">
             <div className="flex justify-between text-xs text-gray-500 mb-1">
-              <span>{completedCount} of {courses.length} courses completed</span>
+              <span>{t('coursesCompleted', { count: courses.length })}</span>
             </div>
             <Progress value={progressValue} className="h-2" />
           </div>
@@ -538,8 +539,8 @@ export default function CourseOverview() {
           {courses.length === 0 &&
           <div className="bg-white rounded-xl border border-blue-100 p-8 text-center mb-6">
               <GraduationCap className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-              <p className="text-gray-500 mb-1">No courses detected yet</p>
-              <p className="text-sm text-gray-400">Add your courses manually below.</p>
+              <p className="text-gray-500 mb-1">{t('noCoursesYet')}</p>
+              <p className="text-sm text-gray-400">{t('noCoursesDesc')}</p>
             </div>
           }
 
@@ -555,10 +556,10 @@ export default function CourseOverview() {
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && addCourse()}
-              placeholder="Course name…"
+              placeholder={t('courseNamePlaceholder')}
               className="flex-1 h-9" />
             <Button onClick={addCourse} disabled={!newName.trim()} size="sm" variant="outline">
-              <Plus className="w-4 h-4 mr-1" /> Add course
+              <Plus className="w-4 h-4 mr-1" /> {t('addCourse')}
             </Button>
           </div>
 
@@ -571,10 +572,10 @@ export default function CourseOverview() {
 
           <div className="flex justify-between items-center">
             <Button variant="ghost" onClick={() => navigate(`/plan/${planId}/preferences`)}>
-              <ArrowLeft className="w-4 h-4 mr-1" /> Back
+              <ArrowLeft className="w-4 h-4 mr-1" /> {t('back')}
             </Button>
             <Button onClick={handleNext} className="bg-blue-600 hover:bg-blue-700">
-              Extract tasks <ArrowRight className="w-4 h-4 ml-1" />
+              {t('extractTasks')} <ArrowRight className="w-4 h-4 ml-1" />
             </Button>
           </div>
         </motion.div>

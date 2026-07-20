@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
+import { t, useLang } from '@/lib/i18n';
 import { Calendar, Upload, Plus, Trash2, ArrowRight, ArrowLeft, Edit2, Check, X, FileUp, Loader2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -172,6 +173,7 @@ const emptyManual = { name: '', type: 'commitment', start_date: '', end_date: ''
 export default function StudyDates() {
   const { planId } = useParams();
   const navigate = useNavigate();
+  useLang(); // re-render on language change
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [events, setEvents] = useState([]);
@@ -288,11 +290,11 @@ export default function StudyDates() {
 
     // Deduplicate courses semantically before creating them
     // Strip common suffixes/prefixes and derive a clean canonical name
-    const STRIP_WORDS = /\b(vorlesung|lecture|course|übung|ubung|exercise|exercises|lab|praktikum|tutorial|seminar|kurs|class|module|unit|introduction|intro)\b/gi;
-    const normalize = (name) => name.replace(STRIP_WORDS, '').replace(/[-_/\\]+/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+    const STRIP_WORDS = /\b(vorlesung|lecture|course|übung|ubung|exercise|exercises|lab|praktikum|tutorial|tutorium|seminar\s+group|seminar\s+gruppe|seminar|kurs|class|module|unit|introduction|intro)\b/gi;
+    const normalize = (name) => name.replace(/[–—]/g, '-').replace(STRIP_WORDS, '').replace(/[-_/\\]+/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
     // Get the clean display name by stripping type words and title-casing
     const toCanonical = (name) => {
-      const stripped = name.replace(STRIP_WORDS, '').replace(/[-_/\\]+/g, ' ').replace(/\s+/g, ' ').trim();
+      const stripped = name.replace(/[–—]/g, '-').replace(STRIP_WORDS, '').replace(/[-_/\\]+/g, ' ').replace(/\s+/g, ' ').trim();
       return stripped || name;
     };
 
@@ -338,8 +340,8 @@ export default function StudyDates() {
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
           <StepHeader
             icon={Calendar}
-            title="Study Period & Calendar"
-            description="Set when your study plan should start and end, then import your calendar so I can find your fixed events and free study slots." />
+            title={t('studyDatesTitle')}
+            description={t('studyDatesDesc')} />
           
 
           {/* Progress bar */}

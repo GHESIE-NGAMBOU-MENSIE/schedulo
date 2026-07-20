@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
+import { t, useLang } from '@/lib/i18n';
 import { BookOpen, ArrowRight, ArrowLeft, Upload, FileText, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,8 +17,7 @@ const COURSE_TYPES = [
   { key: 'lecture_course',     label: 'Lecture course' },
   { key: 'lecture_exercises',  label: 'Lecture with exercises' },
   { key: 'seminar',            label: 'Seminar' },
-  { key: 'project_course',     label: 'Project course' },
-  { key: 'lab_course',         label: 'Lab course' },
+  { key: 'project_course',     label: 'Project' },
   { key: 'bachelor_thesis',    label: 'Thesis' },
   { key: 'other',              label: 'Other' },
 ];
@@ -29,13 +29,13 @@ const STRUCTURE_ELEMENTS = [
   { key: 'supervision_meetings', label: 'Supervision meetings',    group: 'Attendance' },
   { key: 'assignments',          label: 'Assignments / submissions', group: 'Submissions' },
   { key: 'quizzes',              label: 'Quizzes',                 group: 'Submissions' },
-  { key: 'testate',              label: 'Tests / Testate',         group: 'Submissions' },
+  { key: 'testate',              label: 'Tests',                   group: 'Submissions' },
   { key: 'seminar_presentation', label: 'Presentation',            group: 'Submissions' },
-  { key: 'paper_essay',          label: 'Paper / essay',           group: 'Submissions' },
+  { key: 'paper_essay',          label: 'Essay',                   group: 'Submissions' },
   { key: 'project_work',         label: 'Project work',            group: 'Project / Thesis' },
   { key: 'implementation',       label: 'Implementation / dev',    group: 'Project / Thesis' },
   { key: 'thesis_writing',       label: 'Thesis writing',          group: 'Project / Thesis' },
-  { key: 'literature_work',      label: 'Literature / research',   group: 'Project / Thesis' },
+  { key: 'literature_work',      label: 'Literature Research',     group: 'Project / Thesis' },
   { key: 'final_exam',           label: 'Final exam',              group: 'Assessment' },
   { key: 'oral_exam',            label: 'Oral exam',               group: 'Assessment' },
   { key: 'revision_buffer',      label: 'Revision / buffer',       group: 'Other' },
@@ -64,6 +64,7 @@ function suggestStructure(courseTypeKey) {
 export default function CourseDetail() {
   const { planId, courseId } = useParams();
   const navigate = useNavigate();
+  useLang(); // re-render on language change
   const [course, setCourse] = useState(null);
   const [allCourses, setAllCourses] = useState([]);
   const [selectedType, setSelectedType] = useState('');
@@ -219,18 +220,18 @@ export default function CourseDetail() {
               <div key={c.id} className={`h-1.5 flex-1 rounded-full transition-all ${i <= currentIdx ? 'bg-blue-500' : 'bg-gray-200'}`} />
             ))}
           </div>
-          <p className="text-xs text-gray-400 mb-6">Course {currentIdx + 1} of {allCourses.length}</p>
+          <p className="text-xs text-gray-400 mb-6">{t('courseProgress', { current: currentIdx + 1, total: allCourses.length })}</p>
 
           <StepHeader
             icon={BookOpen}
             title={course.name}
-            description="Fill in the details for this course. The more info you provide, the better your study plan will be."
+            description={t('courseDetailDesc')}
           />
 
           {/* Course type */}
           <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-4">
-            <h3 className="font-semibold text-gray-900 mb-1">Course type</h3>
-            <p className="text-sm text-gray-400 mb-3">Select the general kind of course.</p>
+            <h3 className="font-semibold text-gray-900 mb-1">{t('courseType')}</h3>
+            <p className="text-sm text-gray-400 mb-3">{t('courseTypeDesc')}</p>
             <div className="flex flex-wrap gap-2">
               {COURSE_TYPES.map(ct => (
                 <button
@@ -250,15 +251,15 @@ export default function CourseDetail() {
           <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-4">
             <div className="flex items-start justify-between mb-1">
               <div>
-                <h3 className="font-semibold text-gray-900">Course structure / workload elements</h3>
-                <p className="text-sm text-gray-400 mb-3">Select everything that applies — only selected elements appear in the workload breakdown.</p>
+                <h3 className="font-semibold text-gray-900">{t('courseStructure')}</h3>
+                <p className="text-sm text-gray-400 mb-3">{t('courseStructureDesc')}</p>
               </div>
               {selectedType && (
                 <button
                   onClick={() => setCourseStructure(suggestStructure(selectedType))}
                   className="text-xs text-blue-500 hover:text-blue-700 whitespace-nowrap ml-4 mt-1"
                 >
-                  Reset to suggestion
+                  {t('resetToSuggestion')}
                 </button>
               )}
             </div>
@@ -286,55 +287,41 @@ export default function CourseDetail() {
               );
             })}
             {courseStructure.length === 0 && (
-              <p className="text-xs text-amber-600 mt-1">⚠ No structure selected. Please select at least one element so workload categories can be created.</p>
+              <p className="text-xs text-amber-600 mt-1">{t('noStructureSelected')}</p>
             )}
           </div>
 
           {/* Course content counts */}
-          {(courseStructure.includes('lectures') || courseStructure.includes('exercises') || courseStructure.includes('assignments') || courseStructure.includes('quizzes') || courseStructure.includes('testate')) && (
-            <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-4">
-              <h3 className="font-semibold text-gray-900 mb-1">Course content</h3>
-              <p className="text-sm text-gray-400 mb-3">Optional — helps generate more accurate tasks.</p>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {courseStructure.includes('lectures') && (
-                  <div>
-                    <Label className="text-sm text-gray-600">Chapters / topics</Label>
-                    <Input type="number" min={0} value={numChapters} onChange={e => setNumChapters(e.target.value)} placeholder="e.g. 12" className="mt-1" />
-                  </div>
-                )}
-                {courseStructure.includes('exercises') && (
-                  <div>
-                    <Label className="text-sm text-gray-600">Exercise sheets</Label>
-                    <Input type="number" min={0} value={numExercises} onChange={e => setNumExercises(e.target.value)} placeholder="e.g. 10" className="mt-1" />
-                  </div>
-                )}
-                {courseStructure.includes('assignments') && (
-                  <div>
-                    <Label className="text-sm text-gray-600">Assignments</Label>
-                    <Input type="number" min={0} value={numAssignments} onChange={e => setNumAssignments(e.target.value)} placeholder="e.g. 3" className="mt-1" />
-                  </div>
-                )}
-                {(courseStructure.includes('quizzes') || courseStructure.includes('testate')) && (
-                  <div>
-                    <Label className="text-sm text-gray-600">Quizzes / Testate</Label>
-                    <Input type="number" min={0} value={numQuizzes} onChange={e => setNumQuizzes(e.target.value)} placeholder="e.g. 5" className="mt-1" />
-                  </div>
-                )}
+          <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-4">
+            <h3 className="font-semibold text-gray-900 mb-1">{t('courseContent')}</h3>
+            <p className="text-sm text-gray-400 mb-3">{t('courseContentDesc')}</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div>
+                <Label className="text-sm text-gray-600">{t('chapters')}</Label>
+                <Input type="number" min={0} value={numChapters} onChange={e => setNumChapters(e.target.value)} placeholder="e.g. 12" className="mt-1" />
+              </div>
+              <div>
+                <Label className="text-sm text-gray-600">{t('exerciseSheets')}</Label>
+                <Input type="number" min={0} value={numExercises} onChange={e => setNumExercises(e.target.value)} placeholder="e.g. 10" className="mt-1" />
+              </div>
+              <div>
+                <Label className="text-sm text-gray-600">{t('assignments')}</Label>
+                <Input type="number" min={0} value={numAssignments} onChange={e => setNumAssignments(e.target.value)} placeholder="e.g. 3" className="mt-1" />
               </div>
             </div>
-          )}
+          </div>
 
           {/* Details grid */}
           <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <Label className="text-sm text-gray-600">Credit points</Label>
+                <Label className="text-sm text-gray-600">{t('ects')}</Label>
                 <Input type="number" value={credits} onChange={e => setCredits(e.target.value)} placeholder="e.g., 5" className="mt-1" />
               </div>
 
               {/* Exam / final assessment */}
               <div className="sm:col-span-2">
-                <Label className="text-sm text-gray-600 block mb-1">Final assessment</Label>
+                <Label className="text-sm text-gray-600 block mb-1">{t('finalAssessment')}</Label>
                 <div className="flex flex-wrap gap-2 mb-3">
                   {[
                     { key: 'exact', label: 'Exact exam date' },
@@ -431,19 +418,20 @@ export default function CourseDetail() {
 
           {/* Description */}
           <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-4">
-            <Label className="text-sm text-gray-600">Course description (optional)</Label>
-            <Textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Brief description of what this course covers..." className="mt-1" rows={3} />
+            <Label className="text-sm text-gray-600">{t('courseDescription')}</Label>
+            <p className="text-sm text-gray-400 mb-2">{t('courseDescriptionDesc')}</p>
+            <Textarea value={description} onChange={e => setDescription(e.target.value)} placeholder={t('courseDescriptionPlaceholder')} className="mt-1" rows={3} />
           </div>
 
           {/* Materials */}
           <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-4">
-            <h3 className="font-semibold text-gray-900 mb-1">Course materials</h3>
-            <p className="text-sm text-gray-400 mb-3">Upload syllabi, assignment sheets, or paste course info. I'll extract tasks and deadlines from these.</p>
+            <h3 className="font-semibold text-gray-900 mb-1">{t('courseMaterials')}</h3>
+            <p className="text-sm text-gray-400 mb-3">{t('courseMaterialsDesc')}</p>
             <div className="space-y-3">
               <Textarea
                 value={materialsText}
                 onChange={e => setMaterialsText(e.target.value)}
-                placeholder="Paste syllabus, assignments, deadlines, reading lists, announcements..."
+                placeholder={t('materialsPlaceholder')}
                 rows={5}
               />
               <div className="flex items-center gap-3">
@@ -451,11 +439,11 @@ export default function CourseDetail() {
                   <input type="file" accept=".pdf,.doc,.docx,.txt,.png,.jpg" onChange={handleFileUpload} className="hidden" />
                   <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium">
                     {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                    Upload file
+                    {t('uploadFile')}
                   </div>
                 </label>
                 {files.length > 0 && (
-                  <span className="text-sm text-green-600">{files.length} file(s) uploaded</span>
+                  <span className="text-sm text-green-600">{files.length} {t('filesUploaded')}</span>
                 )}
               </div>
               {files.map((f, i) => (
@@ -470,10 +458,10 @@ export default function CourseDetail() {
 
           <div className="flex justify-between items-center">
             <Button variant="ghost" onClick={handleBack}>
-              <ArrowLeft className="w-4 h-4 mr-1" /> Back
+              <ArrowLeft className="w-4 h-4 mr-1" /> {t('back')}
             </Button>
             <Button onClick={handleNext} className="bg-blue-600 hover:bg-blue-700">
-              {isLast ? 'Extract tasks' : 'Next course'} <ArrowRight className="w-4 h-4 ml-1" />
+              {isLast ? t('extractTasks') : t('nextCourse')} <ArrowRight className="w-4 h-4 ml-1" />
             </Button>
           </div>
         </motion.div>

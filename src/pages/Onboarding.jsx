@@ -5,17 +5,19 @@ import { Calendar, BookOpen, BarChart3, RefreshCw, ArrowRight, Sparkles } from '
 import { Button } from '@/components/ui/button';
 import { motion } from 'framer-motion';
 import ContextChat from '@/components/schedulo/ContextChat';
-
-const phases = [
-  { icon: Calendar, title: 'Planning Setup', desc: 'Set your study period, import your calendar, and define your preferences.' },
-  { icon: BookOpen, title: 'Course Information', desc: "Add your course information, upload materials, and let me extract tasks, deadlines, and workload estimates." },
-  { icon: BarChart3, title: 'Plan Generation', desc: "I'll check feasibility and create a personalized, time-blocked study plan." },
-  { icon: RefreshCw, title: 'Active Semester', desc: "Use your plan daily. Tell me when things change, and I'll adapt it for you." }
-];
+import { t, useLang } from '@/lib/i18n';
 
 export default function Onboarding() {
   const navigate = useNavigate();
   const [showChat, setShowChat] = useState(false);
+  useLang(); // re-render on language change
+
+  const phases = [
+    { icon: Calendar, title: t('phase1Title'), desc: t('phase1Desc') },
+    { icon: BookOpen, title: t('phase2Title'), desc: t('phase2Desc') },
+    { icon: BarChart3, title: t('phase3Title'), desc: t('phase3Desc') },
+    { icon: RefreshCw, title: t('phase4Title'), desc: t('phase4Desc') }
+  ];
 
   const handleStart = async () => {
     try {
@@ -53,10 +55,10 @@ export default function Onboarding() {
             <Sparkles className="w-8 h-8 text-white" />
           </motion.div>
           <h1 className="text-4xl font-bold font-heading text-gray-900 mb-4">
-            Hi there! 👋
+            {t('onboardingTitle')}
           </h1>
           <p className="text-lg text-gray-600 max-w-md mx-auto leading-relaxed">
-            I'm <span className="font-semibold text-blue-600">Schedulo</span>, your smart semester planning assistant. I'll help you create a personalized study plan based on your courses, calendar, deadlines, workload, and study preferences.
+            {t('onboardingDesc')}
           </p>
         </div>
 
@@ -94,7 +96,7 @@ export default function Onboarding() {
             size="lg"
             className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-6 text-lg rounded-xl shadow-lg shadow-blue-200 hover:shadow-xl transition-all"
           >
-            Start planning
+            {t('startPlanning')}
             <ArrowRight className="w-5 h-5 ml-2" />
           </Button>
         </motion.div>

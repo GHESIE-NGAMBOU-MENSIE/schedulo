@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
+import { t, useLang } from '@/lib/i18n';
 import { Calendar, List, ArrowLeft, CheckCircle, AlertCircle, Loader2, RotateCcw, Info, ChevronDown, ChevronUp, Plus } from 'lucide-react';
 import { PLANNING_REFERENCE_DATE } from '@/lib/planningDate';
 import { Button } from '@/components/ui/button';
@@ -24,6 +25,7 @@ function parseDate(str) {
 export default function PlanGeneration() {
   const { planId } = useParams();
   const navigate = useNavigate();
+  useLang(); // re-render on language change
   const [plan, setPlan] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [courses, setCourses] = useState([]);
@@ -404,10 +406,8 @@ export default function PlanGeneration() {
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
           <StepHeader
             icon={Calendar}
-            title="Your Study Plan"
-            description={generated ?
-            "Review and adjust your study plan. Drag and drop tasks, edit times, and delete tasks when needed." :
-            "I'll build a context-aware study schedule by placing your tasks into the best available time slots."} />
+            title={t('planTitle')}
+            description={generated ? t('planDescReview') : t('planDescGenerate')} />
           
           {generated && !generating &&
           <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 flex items-start gap-2 hidden">
@@ -433,16 +433,16 @@ export default function PlanGeneration() {
               {generating ?
             <div className="space-y-3">
                   <Loader2 className="w-10 h-10 animate-spin text-blue-500 mx-auto" />
-                  <p className="text-gray-600 font-medium">Analyzing your calendar and scheduling tasks...</p>
-                  <p className="text-sm text-gray-400">Detecting free slots, connecting tasks to lectures and exercises.</p>
+                  <p className="text-gray-600 font-medium">{t('analyzingCalendar')}</p>
+                  <p className="text-sm text-gray-400">{t('analyzingDesc')}</p>
                 </div> :
 
             <div className="space-y-3">
                   <Calendar className="w-10 h-10 text-blue-400 mx-auto" />
-                  <p className="text-gray-600">Ready to generate your context-aware study plan.</p>
-                  <p className="text-sm text-gray-400">{tasks.length} tasks will be placed into your real calendar slots.</p>
+                  <p className="text-gray-600">{t('readyToGenerate')}</p>
+                  <p className="text-sm text-gray-400">{t('tasksWillBePlaced', { count: tasks.length })}</p>
                   <Button onClick={generatePlan} className="bg-blue-600 hover:bg-blue-700">
-                    Generate study plan
+                    {t('generateButton')}
                   </Button>
                 </div>
             }
@@ -678,22 +678,22 @@ export default function PlanGeneration() {
               <div className="flex flex-wrap gap-2 items-center justify-between mb-4">
                 <div className="flex gap-2">
                   <Button variant={view === 'calendar' ? 'default' : 'outline'} size="sm" onClick={() => setView('calendar')}>
-                    <Calendar className="w-4 h-4 mr-1" /> Calendar
+                    <Calendar className="w-4 h-4 mr-1" /> {t('calendar')}
                   </Button>
                   <Button variant={view === 'list' ? 'default' : 'outline'} size="sm" onClick={() => setView('list')}>
-                    <List className="w-4 h-4 mr-1" /> Task List
+                    <List className="w-4 h-4 mr-1" /> {t('taskList')}
                   </Button>
                 </div>
                 <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none">
                   <input type="checkbox" checked={showBlockedTimes} onChange={(e) => setShowBlockedTimes(e.target.checked)} className="w-3.5 h-3.5 accent-blue-600" />
-                  Show blocked times
+                   {t('showBlockedTimes')}
                 </label>
                 <Select value={filter} onValueChange={setFilter}>
                   <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All tasks</SelectItem>
-                    <SelectItem value="scheduled">Scheduled only</SelectItem>
-                    <SelectItem value="unscheduled">Unscheduled only</SelectItem>
+                    <SelectItem value="all">{t('allTasks')}</SelectItem>
+                    <SelectItem value="scheduled">{t('scheduledOnly')}</SelectItem>
+                    <SelectItem value="unscheduled">{t('unscheduledOnly')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -884,15 +884,15 @@ export default function PlanGeneration() {
               <div className="flex flex-wrap justify-between items-center gap-3">
                 <div className="flex gap-2">
                   <Button variant="ghost" onClick={() => navigate(`/plan/${planId}/feasibility`)}>
-                    <ArrowLeft className="w-4 h-4 mr-1" /> Back
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={generatePlan} disabled={generating}>
-                    <RotateCcw className="w-4 h-4 mr-1" /> Re-generate
-                  </Button>
+                     <ArrowLeft className="w-4 h-4 mr-1" /> {t('back')}
+                   </Button>
+                   <Button variant="outline" size="sm" onClick={generatePlan} disabled={generating}>
+                     <RotateCcw className="w-4 h-4 mr-1" /> {t('regenerate')}
+                   </Button>
                 </div>
                 <Button onClick={confirmPlan} className="bg-emerald-600 hover:bg-emerald-700" disabled={scheduledTasks.length === 0 || confirming}>
                   {confirming ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-1" />}
-                  {confirming ? 'Activating...' : 'Confirm and activate plan'}
+                  {confirming ? t('activating') : t('confirmActivate')}
                 </Button>
               </div>
             </>

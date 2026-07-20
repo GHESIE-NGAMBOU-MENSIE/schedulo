@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
+import { t, useLang } from '@/lib/i18n';
 import { BarChart3, ArrowRight, ArrowLeft, AlertTriangle, CheckCircle, XCircle, Loader2, RefreshCw, BookOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import PhaseIndicator from '@/components/schedulo/PhaseIndicator';
@@ -11,6 +12,7 @@ import { motion } from 'framer-motion';
 export default function Feasibility() {
   const { planId } = useParams();
   const navigate = useNavigate();
+  useLang(); // re-render on language change
   const [checking, setChecking] = useState(false);
   const [result, setResult] = useState(null);
   const [plan, setPlan] = useState(null);
@@ -171,8 +173,8 @@ export default function Feasibility() {
   };
 
   const statusConfig = {
-    feasible: { icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-200', label: 'Feasible', desc: 'Your study plan looks good! The workload fits within your available time.' },
-    not_feasible: { icon: XCircle, color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-200', label: 'Not Feasible', desc: 'Your workload exceeds your available time. You need to make adjustments.' },
+    feasible: { icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-200', label: t('feasible'), desc: t('feasibleDesc') },
+    not_feasible: { icon: XCircle, color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-200', label: t('notFeasible'), desc: t('notFeasibleDesc') },
   };
 
   return (
@@ -182,15 +184,15 @@ export default function Feasibility() {
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
           <StepHeader
             icon={BarChart3}
-            title="Feasibility Check"
-            description="I'll compare your total CP-based workload against your available study time, deadlines, and calendar to check if your plan is realistic." />
+            title={t('feasibilityTitle')}
+            description={t('feasibilityDesc')} />
 
           {!result && !checking && (
             <div className="bg-white rounded-xl border border-blue-100 p-8 shadow-sm text-center mb-6">
               <BarChart3 className="w-10 h-10 text-blue-400 mx-auto mb-3" />
-              <p className="text-gray-600 mb-4">Ready to analyze your study plan feasibility.</p>
+              <p className="text-gray-600 mb-4">{t('readyToAnalyze')}</p>
               <Button onClick={runCheck} className="bg-blue-600 hover:bg-blue-700">
-                Run feasibility check
+                {t('runFeasibilityCheck')}
               </Button>
             </div>
           )}
@@ -198,7 +200,7 @@ export default function Feasibility() {
           {checking && (
             <div className="bg-white rounded-xl border border-blue-100 p-8 shadow-sm text-center mb-6">
               <Loader2 className="w-10 h-10 animate-spin text-blue-500 mx-auto mb-3" />
-              <p className="text-gray-600">Analyzing your plan...</p>
+              <p className="text-gray-600">{t('analyzing')}</p>
             </div>
           )}
 
@@ -213,21 +215,7 @@ export default function Feasibility() {
                 <p className="text-sm text-gray-600">{statusConfig[result.status].desc}</p>
               </div>
 
-              {/* Key stats */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-                {[
-                  { label: 'Total CP workload', value: `${result.totalCpWorkload}h`, sub: '1 CP = 30h', color: 'text-blue-600' },
-                  { label: 'Calendar events', value: `−${result.totalCalHours}h`, sub: 'already covered', color: 'text-violet-600' },
-                  { label: 'Self-study needed', value: `${result.totalRemainingWorkload}h`, sub: `${result.hoursPerWeek}h/week`, color: result.totalRemainingWorkload > result.totalAvailableHours ? 'text-red-600' : 'text-emerald-600' },
-                  { label: 'Available time', value: `${result.totalAvailableHours}h`, sub: `${result.weeklyAvailableHours}h/week`, color: 'text-amber-600' },
-                ].map(stat => (
-                  <div key={stat.label} className="bg-white rounded-xl border border-blue-100 p-4 text-center shadow-sm">
-                    <p className={`text-xl font-bold ${stat.color}`}>{stat.value}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{stat.label}</p>
-                    {stat.sub && <p className="text-xs text-gray-300">{stat.sub}</p>}
-                  </div>
-                ))}
-              </div>
+
 
               {/* Per-course breakdown */}
               {result.coursesWithMeta && result.coursesWithMeta.length > 0 && (
@@ -266,10 +254,10 @@ export default function Feasibility() {
                 </div>
               )}
 
-              {/* Issues */}
-              {result.issues.length > 0 && (
+              {/* Issues — only shown when not feasible */}
+              {result.status === 'not_feasible' && result.issues.length > 0 && (
                 <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-4">
-                  <h3 className="font-semibold text-gray-900 mb-3">Issues found</h3>
+                  <h3 className="font-semibold text-gray-900 mb-3">{t('issuesFound')}</h3>
                   <ul className="space-y-2">
                     {result.issues.map((issue, i) => (
                       <li key={i} className="flex items-start gap-2 text-sm text-gray-600">
@@ -281,10 +269,10 @@ export default function Feasibility() {
                 </div>
               )}
 
-              {/* Suggestions */}
-              {result.suggestions.length > 0 && (
+              {/* Suggestions — only shown when not feasible */}
+              {result.status === 'not_feasible' && result.suggestions.length > 0 && (
                 <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-6">
-                  <h3 className="font-semibold text-gray-900 mb-3">Suggestions</h3>
+                  <h3 className="font-semibold text-gray-900 mb-3">{t('suggestions')}</h3>
                   <ul className="space-y-2">
                     {result.suggestions.map((s, i) => (
                       <li key={i} className="flex items-start gap-2 text-sm text-gray-600">
@@ -298,13 +286,13 @@ export default function Feasibility() {
 
               <div className="flex flex-wrap gap-2 mb-6">
                 <Button variant="outline" onClick={() => navigate(`/plan/${planId}/preferences`)}>
-                  Adjust preferences
+                  {t('adjustPreferences')}
                 </Button>
                 <Button variant="outline" onClick={() => navigate(`/plan/${planId}/tasks`)}>
-                  Edit tasks
+                  {t('editTasks')}
                 </Button>
                 <Button variant="outline" onClick={() => { setResult(null); runCheck(); }}>
-                  <RefreshCw className="w-4 h-4 mr-1" /> Re-check
+                  <RefreshCw className="w-4 h-4 mr-1" /> {t('reCheck')}
                 </Button>
               </div>
             </>
@@ -312,10 +300,10 @@ export default function Feasibility() {
 
           <div className="flex justify-between items-center">
             <Button variant="ghost" onClick={() => navigate(`/plan/${planId}/tasks`)}>
-              <ArrowLeft className="w-4 h-4 mr-1" /> Back
+              <ArrowLeft className="w-4 h-4 mr-1" /> {t('back')}
             </Button>
             <Button onClick={() => navigate(`/plan/${planId}/generate`)} className="bg-blue-600 hover:bg-blue-700">
-              Generate study plan <ArrowRight className="w-4 h-4 ml-1" />
+              {t('generateStudyPlan')} <ArrowRight className="w-4 h-4 ml-1" />
             </Button>
           </div>
         </motion.div>
