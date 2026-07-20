@@ -285,6 +285,36 @@ function CourseCard({ course, onDelete, onSave }) {
                 </div>
               </div>
 
+              {/* ── Documents ── */}
+              <div>
+                <Label className="text-xs text-gray-600 block mb-2">Upload documents <span className="text-gray-400">(syllabus, semester plan, etc.)</span></Label>
+                <label className="cursor-pointer inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-xs font-medium">
+                  <input type="file" accept=".pdf,.doc,.docx,.txt,.png,.jpg" onChange={handleFileUpload} className="hidden" />
+                  {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                  {uploading ? 'Uploading…' : 'Upload file'}
+                </label>
+                {files.length > 0 &&
+              <div className="mt-2 space-y-1">
+                    {files.map((f, i) =>
+                <div key={i} className="flex items-center gap-2 text-xs text-gray-500">
+                        <FileText className="w-3.5 h-3.5" />
+                        <span className="truncate max-w-xs">{f.split('/').pop()}</span>
+                        <button onClick={() => handleFileDelete(f)} className="text-red-400 hover:text-red-600">Remove</button>
+                      </div>
+                )}
+                  </div>
+              }
+              </div>
+
+              {/* ── Notes ── */}
+              <div>
+                <Label className="text-xs text-gray-600">Course description</Label>
+                <p className="text-xs text-gray-400 mb-1">Add any important details about the course.</p>
+                <Textarea value={materialsText} onChange={(e) => setMaterialsText(e.target.value)}
+              placeholder="e.g. course description, course structure, weekly tasks, projects, and exam requirements"
+              rows={3} className="mt-1 text-sm" />
+              </div>
+
               {/* ── Course type ── */}
               <div>
                 <Label className="text-xs text-gray-600 block mb-2">Course type</Label>
@@ -403,36 +433,6 @@ function CourseCard({ course, onDelete, onSave }) {
 
 
             
-
-              {/* ── Documents ── */}
-              <div>
-                <Label className="text-xs text-gray-600 block mb-2">Upload documents <span className="text-gray-400">(syllabus, semester plan, etc.)</span></Label>
-                <label className="cursor-pointer inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-xs font-medium">
-                  <input type="file" accept=".pdf,.doc,.docx,.txt,.png,.jpg" onChange={handleFileUpload} className="hidden" />
-                  {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-                  {uploading ? 'Uploading…' : 'Upload file'}
-                </label>
-                {files.length > 0 &&
-              <div className="mt-2 space-y-1">
-                    {files.map((f, i) =>
-                <div key={i} className="flex items-center gap-2 text-xs text-gray-500">
-                        <FileText className="w-3.5 h-3.5" />
-                        <span className="truncate max-w-xs">{f.split('/').pop()}</span>
-                        <button onClick={() => handleFileDelete(f)} className="text-red-400 hover:text-red-600">Remove</button>
-                      </div>
-                )}
-                  </div>
-              }
-              </div>
-
-              {/* ── Notes ── */}
-              <div>
-                <Label className="text-xs text-gray-600">Course description</Label>
-                <p className="text-xs text-gray-400 mb-1">Add any important details about the course.</p>
-                <Textarea value={materialsText} onChange={(e) => setMaterialsText(e.target.value)}
-              placeholder="e.g. course description, course structure, weekly tasks, projects, and exam requirements"
-              rows={3} className="mt-1 text-sm" />
-              </div>
 
               <div className="flex justify-end">
                 <Button onClick={handleSave} disabled={saving} size="sm" className="bg-blue-600 hover:bg-blue-700">
