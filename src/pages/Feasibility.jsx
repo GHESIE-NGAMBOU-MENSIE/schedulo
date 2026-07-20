@@ -17,7 +17,7 @@ export default function Feasibility() {
   const [result, setResult] = useState(null);
   const [plan, setPlan] = useState(null);
 
-  useEffect(() => { loadPlan(); }, [planId]);
+  useEffect(() => {loadPlan();}, [planId]);
 
   const loadPlan = async () => {
     try {
@@ -56,21 +56,21 @@ export default function Feasibility() {
       return sum + Math.min(windowHours, maxHoursPerDay);
     }, 0);
 
-    const studyDaysPerWeek = DAYS.filter(day => daySchedule[day] && !daySchedule[day].noStudy).length;
+    const studyDaysPerWeek = DAYS.filter((day) => daySchedule[day] && !daySchedule[day].noStudy).length;
     const totalAvailableHours = weeklyAvailableHours * totalWeeks;
 
     // ── CP-based workload (canonical) ─────────────────────────────────────
     // 1 CP = 30h — this is the ground truth regardless of extracted tasks
     const calEvents = p.calendar_events || [];
 
-    const coursesWithMeta = courses.map(course => {
+    const coursesWithMeta = courses.map((course) => {
       const cp = course.credit_points || 0;
       const cpHours = cp * 30;
 
       // Estimate calendar attendance hours for this course
-      const courseLower = (course.name || '').toLowerCase()
-        .replace(/\b(vorlesung|lecture|course|übung|exercise|lab|seminar)\b/gi, '').trim();
-      const matchingEvents = calEvents.filter(e => {
+      const courseLower = (course.name || '').toLowerCase().
+      replace(/\b(vorlesung|lecture|course|übung|exercise|lab|seminar)\b/gi, '').trim();
+      const matchingEvents = calEvents.filter((e) => {
         const eLower = (e.name || '').toLowerCase();
         return eLower.includes(courseLower.split(' ')[0]) || courseLower.includes(eLower.split(' ')[0]);
       });
@@ -87,8 +87,8 @@ export default function Feasibility() {
 
       const calHoursTotal = Math.round(calHoursPerWeek * weekCount * 10) / 10;
       const remainingHours = Math.max(0, cpHours - calHoursTotal);
-      const taskHours = tasks.filter(t => t.course_id === course.id)
-        .reduce((s, t) => s + (t.estimated_hours || 0), 0);
+      const taskHours = tasks.filter((t) => t.course_id === course.id).
+      reduce((s, t) => s + (t.estimated_hours || 0), 0);
 
       return {
         id: course.id,
@@ -99,7 +99,7 @@ export default function Feasibility() {
         remainingHours,
         taskHours,
         examDate: course.exam_date,
-        examType: course.exam_type,
+        examType: course.exam_type
       };
     });
 
@@ -115,12 +115,12 @@ export default function Feasibility() {
     // ── Deadline issues ───────────────────────────────────────────────────
     const now = new Date();
     const deadlineIssues = [];
-    tasks.forEach(t => {
+    tasks.forEach((t) => {
       if (t.deadline) {
         const dl = new Date(t.deadline);
         const daysUntil = Math.ceil((dl - now) / (1000 * 60 * 60 * 24));
-        if (daysUntil < 3) deadlineIssues.push(`"${t.title}" due in ${daysUntil} day${daysUntil === 1 ? '' : 's'} — very tight!`);
-        else if (daysUntil < 7) deadlineIssues.push(`"${t.title}" due in ${daysUntil} days — start soon.`);
+        if (daysUntil < 3) deadlineIssues.push(`"${t.title}" due in ${daysUntil} day${daysUntil === 1 ? '' : 's'} — very tight!`);else
+        if (daysUntil < 7) deadlineIssues.push(`"${t.title}" due in ${daysUntil} days — start soon.`);
       }
     });
 
@@ -143,9 +143,9 @@ export default function Feasibility() {
       suggestions.push('Prioritize tasks with the closest deadlines first.');
     }
 
-    const missingExam = coursesWithMeta.filter(c => !c.examDate && c.examType !== 'none');
+    const missingExam = coursesWithMeta.filter((c) => !c.examDate && c.examType !== 'none');
     if (missingExam.length > 0) {
-      issues.push(`No exam date set for: ${missingExam.map(c => c.name).join(', ')}. Exam preparation timing may be unreliable.`);
+      issues.push(`No exam date set for: ${missingExam.map((c) => c.name).join(', ')}. Exam preparation timing may be unreliable.`);
       suggestions.push('Add exam dates in course details for more accurate planning.');
     }
 
@@ -164,7 +164,7 @@ export default function Feasibility() {
       suggestions,
       taskCount: tasks.length,
       courseCount: courses.length,
-      coursesWithMeta,
+      coursesWithMeta
     };
 
     await base44.entities.StudyPlan.update(planId, { feasibility: analysisResult });
@@ -174,7 +174,7 @@ export default function Feasibility() {
 
   const statusConfig = {
     feasible: { icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-200', label: t('feasible'), desc: t('feasibleDesc') },
-    not_feasible: { icon: XCircle, color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-200', label: t('notFeasible'), desc: t('notFeasibleDesc') },
+    not_feasible: { icon: XCircle, color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-200', label: t('notFeasible'), desc: t('notFeasibleDesc') }
   };
 
   return (
@@ -187,25 +187,25 @@ export default function Feasibility() {
             title={t('feasibilityTitle')}
             description={t('feasibilityDesc')} />
 
-          {!result && !checking && (
-            <div className="bg-white rounded-xl border border-blue-100 p-8 shadow-sm text-center mb-6">
+          {!result && !checking &&
+          <div className="bg-white rounded-xl border border-blue-100 p-8 shadow-sm text-center mb-6">
               <BarChart3 className="w-10 h-10 text-blue-400 mx-auto mb-3" />
               <p className="text-gray-600 mb-4">{t('readyToAnalyze')}</p>
               <Button onClick={runCheck} className="bg-blue-600 hover:bg-blue-700">
                 {t('runFeasibilityCheck')}
               </Button>
             </div>
-          )}
+          }
 
-          {checking && (
-            <div className="bg-white rounded-xl border border-blue-100 p-8 shadow-sm text-center mb-6">
+          {checking &&
+          <div className="bg-white rounded-xl border border-blue-100 p-8 shadow-sm text-center mb-6">
               <Loader2 className="w-10 h-10 animate-spin text-blue-500 mx-auto mb-3" />
               <p className="text-gray-600">{t('analyzing')}</p>
             </div>
-          )}
+          }
 
-          {result && (
-            <>
+          {result &&
+          <>
               {/* Status */}
               <div className={`${statusConfig[result.status].bg} ${statusConfig[result.status].border} border rounded-xl p-6 mb-6`}>
                 <div className="flex items-center gap-3 mb-2">
@@ -218,71 +218,71 @@ export default function Feasibility() {
 
 
               {/* Per-course breakdown */}
-              {result.coursesWithMeta && result.coursesWithMeta.length > 0 && (
-                <div className="bg-white rounded-xl border border-blue-100 p-5 shadow-sm mb-5">
+              {result.coursesWithMeta && result.coursesWithMeta.length > 0 &&
+            <div className="bg-white rounded-xl border border-blue-100 p-5 shadow-sm mb-5">
                   <div className="flex items-center gap-2 mb-3">
                     <BookOpen className="w-4 h-4 text-blue-500" />
                     <h3 className="font-semibold text-gray-900 text-sm">Workload per course</h3>
                   </div>
                   <div className="space-y-2">
                     {result.coursesWithMeta.map((c, i) => {
-                      const pct = result.totalCpWorkload > 0 ? Math.round((c.cpHours / result.totalCpWorkload) * 100) : 0;
-                      return (
-                        <div key={i} className="flex items-center gap-3 text-sm">
+                  const pct = result.totalCpWorkload > 0 ? Math.round(c.cpHours / result.totalCpWorkload * 100) : 0;
+                  return (
+                    <div key={i} className="flex items-center gap-3 text-sm">
                           <div className="w-2 h-2 rounded-full bg-blue-400 flex-shrink-0" />
                           <span className="flex-1 text-gray-700 truncate">{c.name}</span>
                           <span className="text-gray-400 text-xs">{c.cp} CP</span>
                           <span className="font-semibold text-blue-700 w-14 text-right">{c.cpHours}h</span>
-                          {c.calHoursTotal > 0 && (
-                            <span className="text-violet-500 text-xs w-20 text-right">−{c.calHoursTotal}h cal</span>
-                          )}
+                          {c.calHoursTotal > 0 &&
+                      <span className="text-violet-500 text-xs w-20 text-right">−{c.calHoursTotal}h cal</span>
+                      }
                           <span className="text-gray-500 text-xs w-20 text-right">{c.remainingHours}h self-study</span>
-                        </div>
-                      );
-                    })}
+                        </div>);
+
+                })}
                     <div className="flex items-center gap-3 text-sm border-t border-gray-100 pt-2 mt-1">
                       <div className="w-2 h-2 rounded-full flex-shrink-0" />
                       <span className="flex-1 font-semibold text-gray-800">Total</span>
                       <span className="text-gray-400 text-xs">{result.courseCount} courses</span>
                       <span className="font-bold text-blue-700 w-14 text-right">{result.totalCpWorkload}h</span>
-                      {result.totalCalHours > 0 && (
-                        <span className="text-violet-500 text-xs w-20 text-right">−{result.totalCalHours}h cal</span>
-                      )}
+                      {result.totalCalHours > 0 &&
+                  <span className="text-violet-500 text-xs w-20 text-right">−{result.totalCalHours}h cal</span>
+                  }
                       <span className="font-bold text-gray-700 text-xs w-20 text-right">{result.totalRemainingWorkload}h</span>
                     </div>
                   </div>
                 </div>
-              )}
+            }
 
               {/* Issues — only shown when not feasible */}
-              {result.status === 'not_feasible' && result.issues.length > 0 && (
-                <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-4">
+              {result.status === 'not_feasible' && result.issues.length > 0 &&
+            <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-4">
                   <h3 className="font-semibold text-gray-900 mb-3">{t('issuesFound')}</h3>
                   <ul className="space-y-2">
-                    {result.issues.map((issue, i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm text-gray-600">
+                    {result.issues.map((issue, i) =>
+                <li key={i} className="flex items-start gap-2 text-sm text-gray-600">
                         <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
                         {issue}
                       </li>
-                    ))}
+                )}
                   </ul>
                 </div>
-              )}
+            }
 
               {/* Suggestions — only shown when not feasible */}
-              {result.status === 'not_feasible' && result.suggestions.length > 0 && (
-                <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-6">
+              {result.status === 'not_feasible' && result.suggestions.length > 0 &&
+            <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-6">
                   <h3 className="font-semibold text-gray-900 mb-3">{t('suggestions')}</h3>
                   <ul className="space-y-2">
-                    {result.suggestions.map((s, i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm text-gray-600">
+                    {result.suggestions.map((s, i) =>
+                <li key={i} className="flex items-start gap-2 text-sm text-gray-600">
                         <span className="text-blue-500 mt-0.5 flex-shrink-0">💡</span>
                         {s}
                       </li>
-                    ))}
+                )}
                   </ul>
                 </div>
-              )}
+            }
 
               <div className="flex flex-wrap gap-2 mb-6">
                 <Button variant="outline" onClick={() => navigate(`/plan/${planId}/preferences`)}>
@@ -291,29 +291,29 @@ export default function Feasibility() {
                 <Button variant="outline" onClick={() => navigate(`/plan/${planId}/tasks`)}>
                   {t('editTasks')}
                 </Button>
-                <Button variant="outline" onClick={() => { setResult(null); runCheck(); }}>
+                <Button variant="outline" onClick={() => {setResult(null);runCheck();}}>
                   <RefreshCw className="w-4 h-4 mr-1" /> {t('reCheck')}
                 </Button>
               </div>
             </>
-          )}
+          }
 
           <div className="flex justify-between items-center">
             <Button variant="ghost" onClick={() => navigate(`/plan/${planId}/tasks`)}>
               <ArrowLeft className="w-4 h-4 mr-1" /> {t('back')}
             </Button>
-            <Button onClick={() => navigate(`/plan/${planId}/generate`)} className="bg-blue-600 hover:bg-blue-700">
+            <Button onClick={() => navigate(`/plan/${planId}/generate`)} className="bg-blue-600 hover:bg-blue-700 hidden">
               {t('generateStudyPlan')} <ArrowRight className="w-4 h-4 ml-1" />
             </Button>
           </div>
         </motion.div>
       </div>
       <ContextChat phase="feasibility" planId={planId} suggestions={[
-        "Why is my workload so high?",
-        "How does the CP workload work?",
-        "How can I reduce my workload?",
-        "Should I study on weekends?"
-      ]} />
-    </div>
-  );
+      "Why is my workload so high?",
+      "How does the CP workload work?",
+      "How can I reduce my workload?",
+      "Should I study on weekends?"]
+      } />
+    </div>);
+
 }
