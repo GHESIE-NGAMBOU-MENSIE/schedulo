@@ -258,7 +258,7 @@ function CourseCard({ course, onDelete, onSave }) {
                 <div className="flex items-center justify-between mb-1">
                   <Label className="text-xs text-gray-600">Course structure / workload elements</Label>
                   {courseType &&
-                <button onClick={() => setStructure(suggestStructure(courseType))} className="text-xs text-blue-500 hover:text-blue-700">
+                <button onClick={() => setStructure(suggestStructure(courseType))} className="text-xs text-blue-500 hover:text-blue-700 hidden">
                       Reset to suggestion
                     </button>
                 }
@@ -440,7 +440,7 @@ export default function CourseOverview() {
     let changed = false;
 
     for (const [, group] of groups) {
-      if (group.length <= 1) { merged.push(...group); continue; }
+      if (group.length <= 1) {merged.push(...group);continue;}
       changed = true;
       // Pick the keeper: prefer confirmed, then shortest clean name
       group.sort((a, b) => {
@@ -470,7 +470,7 @@ export default function CourseOverview() {
 
     if (changed && toDelete.length > 0) {
       for (const id of toDelete) {
-        try { await base44.entities.Course.delete(id); } catch (e) {}
+        try {await base44.entities.Course.delete(id);} catch (e) {}
       }
     }
     return merged;
