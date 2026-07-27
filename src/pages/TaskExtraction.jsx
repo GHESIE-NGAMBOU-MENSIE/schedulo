@@ -107,7 +107,7 @@ Assign tasks to weeks STRICTLY following this order:
 PHASE 1 — Content weeks (Week 1 to Week ${examPrepStartWeek - 1}):
   - Lecture review tasks → spread week by week (Week 1, Week 2, ... Week ${examPrepStartWeek - 1})
   - Chapter reading tasks → one per chapter, in order (Chapter 1 → Week 1, Chapter 2 → Week 2, etc.)
-  - Exercise sheets → after the corresponding chapter week (Exercise 1 → Week 1 or 2, etc.)
+  - Exercise sheets → in the SAME week as the corresponding chapter (Exercise 1 → same week as Chapter 1, Exercise 2 → same week as Chapter 2, etc.)
   - Assignments → before their deadline
   - Quiz/Testat preparation → 1-2 weeks BEFORE the quiz/Testat date (NOT in Week 1 unless the quiz is in Week 2)
 
@@ -157,7 +157,7 @@ ${projectRules}
 3. EXERCISE SHEETS → task_type="exercise", title="Solve Exercise Sheet N", exercise_number=N, placed after the corresponding chapter week
 4. ASSIGNMENTS → task_type="assignment", title="Complete Assignment N", deadline=due date if known, target_date=5-7 days before deadline, assignment_number=N
 5. QUIZ/TESTAT PREP → task_type="test", title="Prepare for Quiz N" or "Prepare for Testat N", deadline=quiz date if known, target_date=3-5 days before. Place in the week BEFORE the quiz, NOT in Week 1 if quiz is later.
-6. EXAM PREP → task_type="test", titles like "Review all chapters", "Practice past exam questions", "Final revision". ONLY in Phase 2/3 weeks (Week ${examPrepStartWeek}+).
+6. EXAM PREP → task_type="test", titles like "Review all chapters", "Practice past exam questions", "Final revision". ONLY in Phase 2/3 weeks (Week ${examPrepStartWeek}+). ALWAYS add exam preparation tasks at the end of the study period (final 2 weeks) EVEN IF no exam date is provided, unless the exam type is explicitly "none".
 7. REVISION/BUFFER → task_type="revision", placed in final weeks only.
 
 ## DISTRIBUTION RULES — CRITICAL
@@ -234,7 +234,7 @@ function buildFallbackTasks(course, selfStudyBudget) {
       tasks.push({ title: `Complete assignment ${i}`, task_type: 'assignment', estimated_hours: 3, priority: 'high', target_week: i * 3 });
     }
   }
-  if (structure.includes('final_exam') || structure.includes('oral_exam') || structure.length === 0) {
+  if (course.exam_type !== 'none') {
     tasks.push({ title: `Prepare for final exam — review all chapters`, task_type: 'test', estimated_hours: 4, priority: 'high', target_week: 13, exam_date: course.exam_date || null });
     tasks.push({ title: `Prepare for final exam — practice problems`, task_type: 'test', estimated_hours: 3, priority: 'high', target_week: 14, exam_date: course.exam_date || null });
   }
@@ -395,7 +395,10 @@ export default function TaskExtraction() {
       extracted = extracted.filter((t) => {
         const required = typeToRequiredStructure[t.task_type] || [];
         // Keep the task if at least one of its required structure elements is selected
-        return required.some((k) => structure.includes(k));
+        if (required.some((k) => structure.includes(k))) return true;
+        // Always keep exam prep (test) tasks unless exam type is explicitly "none"
+        if (t.task_type === 'test' && course.exam_type !== 'none') return true;
+        return false;
       });
     }
 
@@ -686,15 +689,30 @@ export default function TaskExtraction() {
                   <p className="text-sm font-semibold text-gray-700">
                     Add task — {courses.find((c) => c.id === addTaskForCourse)?.name}
                   </p>
-                  <Input value={newTask.title} onChange={(e) => setNewTask((p) => ({ ...p, title: e.target.value }))} placeholder="Task title" />
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Task title</label>
+                    <Input value={newTask.title} onChange={(e) => setNewTask((p) => ({ ...p, title: e.target.value }))} placeholder="e.g. Work through Chapter 3" />
+                  </div>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    <Select value={newTask.task_type} onValueChange={(v) => setNewTask((p) => ({ ...p, task_type: v }))}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>{TASK_TYPES.map((tt) => <SelectItem key={tt} value={tt}>{TYPE_LABELS[tt]}</SelectItem>)}</SelectContent>
-                    </Select>
-                    <Input type="number" value={newTask.estimated_hours} onChange={(e) => setNewTask((p) => ({ ...p, estimated_hours: e.target.value }))} placeholder="Hours" />
-                    <Input type="number" value={newTask.target_week} onChange={(e) => setNewTask((p) => ({ ...p, target_week: e.target.value }))} placeholder="Week #" />
-                    <Input type="date" value={newTask.deadline} onChange={(e) => setNewTask((p) => ({ ...p, deadline: e.target.value }))} />
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Task type</label>
+                      <Select value={newTask.task_type} onValueChange={(v) => setNewTask((p) => ({ ...p, task_type: v }))}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>{TASK_TYPES.map((tt) => <SelectItem key={tt} value={tt}>{TYPE_LABELS[tt]}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Estimated hours</label>
+                      <Input type="number" value={newTask.estimated_hours} onChange={(e) => setNewTask((p) => ({ ...p, estimated_hours: e.target.value }))} placeholder="e.g. 2" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Target week</label>
+                      <Input type="number" value={newTask.target_week} onChange={(e) => setNewTask((p) => ({ ...p, target_week: e.target.value }))} placeholder="e.g. 3" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Deadline</label>
+                      <Input type="date" value={newTask.deadline} onChange={(e) => setNewTask((p) => ({ ...p, deadline: e.target.value }))} />
+                    </div>
                   </div>
                   <div className="flex gap-2">
                     <Button size="sm" onClick={addTask} disabled={!newTask.title.trim()}><Plus className="w-4 h-4 mr-1" />Add</Button>

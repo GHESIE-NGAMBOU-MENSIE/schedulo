@@ -191,9 +191,9 @@ export default function WorkloadBreakdown({ course, calendarHours = 0, onBreakdo
             <p className="text-xs text-gray-500">
               {cp} CP · <span className="font-semibold text-blue-700">{totalHours}h total</span>
               {calendarHours > 0 &&
-              <span className="text-violet-600 ml-1">· {Math.round(calendarHours)}h from calendar</span>
+              <span className="text-violet-600 ml-1">· {Math.round(calendarHours)}h from attendances</span>
               }
-              <span className="text-gray-400 ml-1">· {Math.round(selfStudyTotal)}h self-study tasks</span>
+              <span className="text-gray-400 ml-1">· {Math.round(selfStudyTotal)}h study tasks</span>
             </p>
           </div>
         </div>
@@ -256,9 +256,6 @@ export default function WorkloadBreakdown({ course, calendarHours = 0, onBreakdo
           {/* Total */}
           <div className="mt-2 pt-2 border-t border-blue-100 flex items-center justify-between text-xs text-gray-400">
             <span>Total: <strong className={Math.abs(usedHours - totalHours) <= 1 ? 'text-emerald-600' : 'text-amber-600'}>{usedHours}h</strong> / {totalHours}h</span>
-            {calendarHours > 0 &&
-          <span className="text-violet-500">{Math.round(calendarHours)}h covered by calendar</span>
-          }
           </div>
 
           {editing &&

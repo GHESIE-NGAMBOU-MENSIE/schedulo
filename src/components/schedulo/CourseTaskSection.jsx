@@ -28,7 +28,11 @@ const TYPE_LABELS = {
 
 function formatDate(d) {
   if (!d) return null;
-  try {return new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });} catch {return d;}
+  try {
+    const date = new Date(d);
+    const months = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+    return `${date.getDate()}. ${months[date.getMonth()]}`;
+  } catch {return d;}
 }
 
 function getWeek(task, planStartDate) {
@@ -99,14 +103,14 @@ function TaskRow({ task, onEdit, onDelete, isEditing, onSave, onCancelEdit, task
         </div>
         <p className="text-sm text-gray-800 font-medium leading-snug">{task.title}</p>
         <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5 text-xs text-gray-400">
-          <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{task.estimated_hours}h</span>
-          {task.deadline && <span className="text-red-500 flex items-center gap-1"><Calendar className="w-3 h-3" />Due {formatDate(task.deadline)}</span>}
+          <span className="flex items-center gap-1"><Clock className="w-3 h-3" />Est. {task.estimated_hours}h</span>
+          {task.deadline && <span className="text-red-500 flex items-center gap-1"><Calendar className="w-3 h-3" />due {formatDate(task.deadline)}</span>}
           {task.target_date && !task.deadline && <span className="text-blue-500 flex items-center gap-1"><Calendar className="w-3 h-3" />By {formatDate(task.target_date)}</span>}
           
           {task.source_text && <span className="text-gray-300 italic truncate max-w-[200px]" title={task.source_text}>"{task.source_text.slice(0, 60)}"</span>}
         </div>
       </div>
-      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+      <div className="flex gap-1 flex-shrink-0">
         <button onClick={() => onEdit(task.id)} className="p-1 hover:bg-gray-100 rounded transition-colors">
           <Edit2 className="w-3.5 h-3.5 text-gray-400" />
         </button>
