@@ -172,25 +172,25 @@ export default function Export() {
               <h3 className="font-semibold text-gray-900">Export as .ics</h3>
               <p className="text-sm text-gray-400 mt-1">Import into Google Calendar, Apple Calendar, Outlook, or any calendar app.</p>
             </button>
-            <button onClick={exportCSV} className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm hover:border-blue-300 hover:shadow-md transition-all text-left group hidden">
-              <FileText className="w-8 h-8 text-emerald-500 mb-3 group-hover:scale-110 transition-transform" />
-              <h3 className="font-semibold text-gray-900">Export as CSV</h3>
-              <p className="text-sm text-gray-400 mt-1">Open in Excel, Google Sheets, or any spreadsheet tool.</p>
-            </button>
+            
+
+
+
+            
           </div>
 
           {/* Archive */}
-          <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-6 hidden">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                  <Archive className="w-4 h-4 text-gray-500" /> Archive this plan
-                </h3>
-                <p className="text-sm text-gray-400 mt-1">Archive the plan when the semester is over. You can still view it later.</p>
-              </div>
-              <Button variant="outline" onClick={archivePlan}>Archive</Button>
-            </div>
-          </div>
+          
+
+
+
+
+
+
+
+
+
+          
 
           <div className="flex justify-between items-center">
             <Button variant="ghost" onClick={() => navigate(`/plan/${planId}/active`)}>
