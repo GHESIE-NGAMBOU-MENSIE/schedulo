@@ -1024,10 +1024,10 @@ IMPORTANT: Include ALL [MUST MOVE] and [MUST FOLLOW] tasks from the SEQUENCE ANA
                 </div>
 
                 {/* AI warning */}
-                <div className="px-4 py-2 bg-amber-50 border-b border-amber-100 text-xs text-amber-800 flex items-center gap-1.5 hidden">
-                  <AlertCircle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
-                  {t('aiWarningReplan')}
-                </div>
+                
+
+
+                
 
                 {/* Visible week context pill */}
                 <div className="px-4 py-2 bg-blue-50 border-b border-blue-100 text-xs text-blue-700 flex items-center gap-1.5">
