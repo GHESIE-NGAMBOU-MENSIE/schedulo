@@ -123,7 +123,6 @@ export default function Feasibility() {
       issues.push(`Your courses require ~${Math.round(totalRemainingWorkload)}h of self-study, but your availability is ~${Math.round(totalAvailableHours)}h — a gap of ${gap}h.`);
       suggestions.push('Increase your daily study window or add more study days.');
       suggestions.push('Reduce no-study days where possible.');
-      suggestions.push('Check if any course CPs can be reduced or deferred.');
     }
 
     const missingExam = coursesWithMeta.filter((c) => !c.examDate && c.examType !== 'none');
