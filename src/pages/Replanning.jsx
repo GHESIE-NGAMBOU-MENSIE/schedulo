@@ -1009,7 +1009,7 @@ IMPORTANT: Include ALL [MUST MOVE] and [MUST FOLLOW] tasks from the SEQUENCE ANA
 
           <div className="flex flex-col lg:flex-row gap-6 items-start">
             {/* Calendar panel */}
-            <div className="flex flex-col flex-1 min-w-0" style={{ height: 'clamp(380px, 55vh, 580px)' }}>
+            <div className="flex flex-col flex-1 min-w-0 h-[496px]">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
                   <Calendar className="w-4 h-4 text-blue-500" /> Your Calendar
