@@ -36,7 +36,7 @@ export default function Export() {
 
   const getFilteredTasks = () => {
     if (exportRange === 'full') return tasks;
-    return tasks.filter(t => {
+    return tasks.filter((t) => {
       if (!t.scheduled_date) return false;
       return t.scheduled_date >= customStart && t.scheduled_date <= customEnd;
     });
@@ -45,8 +45,8 @@ export default function Export() {
   const exportICS = () => {
     const filtered = getFilteredTasks();
     let ics = 'BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Schedulo//EN\n';
-    
-    filtered.forEach(task => {
+
+    filtered.forEach((task) => {
       if (!task.scheduled_date || !task.scheduled_start || !task.scheduled_end) return;
       const dateStr = task.scheduled_date.replace(/-/g, '');
       const startTime = task.scheduled_start.replace(':', '') + '00';
@@ -58,7 +58,7 @@ export default function Export() {
       ics += `DESCRIPTION:Course: ${task.course_name}\\nType: ${task.task_type}\\nPriority: ${task.priority}\\nEstimated: ${task.estimated_hours}h\\nStatus: ${task.status}\n`;
       ics += `END:VEVENT\n`;
     });
-    
+
     ics += 'END:VCALENDAR';
 
     const blob = new Blob([ics], { type: 'text/calendar' });
@@ -73,12 +73,12 @@ export default function Export() {
   const exportCSV = () => {
     const filtered = getFilteredTasks();
     const headers = ['Course', 'Task', 'Type', 'Date', 'Start Time', 'End Time', 'Estimated Hours', 'Deadline', 'Priority', 'Status'];
-    const rows = filtered.map(t => [
-      t.course_name, t.title, t.task_type, t.scheduled_date, t.scheduled_start, t.scheduled_end,
-      t.estimated_hours, t.deadline || '', t.priority, t.status
-    ]);
-    
-    const csv = [headers, ...rows].map(row => row.map(cell => `"${cell || ''}"`).join(',')).join('\n');
+    const rows = filtered.map((t) => [
+    t.course_name, t.title, t.task_type, t.scheduled_date, t.scheduled_start, t.scheduled_end,
+    t.estimated_hours, t.deadline || '', t.priority, t.status]
+    );
+
+    const csv = [headers, ...rows].map((row) => row.map((cell) => `"${cell || ''}"`).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -97,8 +97,8 @@ export default function Export() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center">
         <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
-      </div>
-    );
+      </div>);
+
   }
 
   const filtered = getFilteredTasks();
@@ -111,8 +111,8 @@ export default function Export() {
           <StepHeader
             icon={Download}
             title="Export & Archive"
-            description="Save your study plan, export it to your calendar app, or archive it for future reference."
-          />
+            description="Save your study plan, export it to your calendar app, or archive it for future reference." />
+          
 
           {/* Plan summary */}
           <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-6">
@@ -123,7 +123,7 @@ export default function Export() {
                 <p className="text-xs text-gray-400">Total tasks</p>
               </div>
               <div>
-                <p className="text-2xl font-bold text-emerald-600">{tasks.filter(t => t.status === 'completed').length}</p>
+                <p className="text-2xl font-bold text-emerald-600">{tasks.filter((t) => t.status === 'completed').length}</p>
                 <p className="text-xs text-gray-400">Completed</p>
               </div>
               <div>
@@ -150,29 +150,29 @@ export default function Export() {
                 <Label htmlFor="custom" className="cursor-pointer">Custom date range</Label>
               </div>
             </RadioGroup>
-            {exportRange === 'custom' && (
-              <div className="grid grid-cols-2 gap-4 mt-4">
+            {exportRange === 'custom' &&
+            <div className="grid grid-cols-2 gap-4 mt-4">
                 <div>
                   <Label className="text-sm text-gray-600">From</Label>
-                  <Input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} min={plan?.start_date} max={plan?.end_date} className="mt-1" />
+                  <Input type="date" value={customStart} onChange={(e) => setCustomStart(e.target.value)} min={plan?.start_date} max={plan?.end_date} className="mt-1" />
                 </div>
                 <div>
                   <Label className="text-sm text-gray-600">To</Label>
-                  <Input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} min={plan?.start_date} max={plan?.end_date} className="mt-1" />
+                  <Input type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} min={plan?.start_date} max={plan?.end_date} className="mt-1" />
                 </div>
               </div>
-            )}
+            }
             <p className="text-sm text-gray-400 mt-3">{filtered.length} tasks will be exported.</p>
           </div>
 
           {/* Export buttons */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-            <button onClick={exportICS} className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm hover:border-blue-300 hover:shadow-md transition-all text-left group">
+            <button onClick={exportICS} className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm hover:border-blue-300 hover:shadow-md transition-all text-left group text-2xl">
               <Calendar className="w-8 h-8 text-blue-500 mb-3 group-hover:scale-110 transition-transform" />
               <h3 className="font-semibold text-gray-900">Export as .ics</h3>
               <p className="text-sm text-gray-400 mt-1">Import into Google Calendar, Apple Calendar, Outlook, or any calendar app.</p>
             </button>
-            <button onClick={exportCSV} className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm hover:border-blue-300 hover:shadow-md transition-all text-left group">
+            <button onClick={exportCSV} className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm hover:border-blue-300 hover:shadow-md transition-all text-left group hidden">
               <FileText className="w-8 h-8 text-emerald-500 mb-3 group-hover:scale-110 transition-transform" />
               <h3 className="font-semibold text-gray-900">Export as CSV</h3>
               <p className="text-sm text-gray-400 mt-1">Open in Excel, Google Sheets, or any spreadsheet tool.</p>
@@ -200,10 +200,10 @@ export default function Export() {
         </motion.div>
       </div>
       <ContextChat phase="export" planId={planId} suggestions={[
-        "How do I import .ics into Google Calendar?",
-        "Can I export only next week?",
-        "What happens when I archive?"
-      ]} />
-    </div>
-  );
+      "How do I import .ics into Google Calendar?",
+      "Can I export only next week?",
+      "What happens when I archive?"]
+      } />
+    </div>);
+
 }
