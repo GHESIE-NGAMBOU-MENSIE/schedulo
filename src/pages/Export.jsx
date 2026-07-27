@@ -10,12 +10,14 @@ import PhaseIndicator from '@/components/schedulo/PhaseIndicator';
 import StepHeader from '@/components/schedulo/StepHeader';
 import ContextChat from '@/components/schedulo/ContextChat';
 import { motion } from 'framer-motion';
+import { jsPDF } from 'jspdf';
 
 export default function Export() {
   const { planId } = useParams();
   const navigate = useNavigate();
   const [plan, setPlan] = useState(null);
   const [tasks, setTasks] = useState([]);
+  const [courses, setCourses] = useState([]);
   const [exportRange, setExportRange] = useState('full');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
@@ -28,7 +30,9 @@ export default function Export() {
       setCustomStart(p.start_date || '');
       setCustomEnd(p.end_date || '');
       const t = await base44.entities.StudyTask.filter({ plan_id: planId });
+      const c = await base44.entities.Course.filter({ plan_id: planId });
       setTasks(t);
+      setCourses(c);
       setLoading(false);
     };
     load();
@@ -70,22 +74,117 @@ export default function Export() {
     URL.revokeObjectURL(url);
   };
 
-  const exportCSV = () => {
-    const filtered = getFilteredTasks();
-    const headers = ['Course', 'Task', 'Type', 'Date', 'Start Time', 'End Time', 'Estimated Hours', 'Deadline', 'Priority', 'Status'];
-    const rows = filtered.map((t) => [
-    t.course_name, t.title, t.task_type, t.scheduled_date, t.scheduled_start, t.scheduled_end,
-    t.estimated_hours, t.deadline || '', t.priority, t.status]
-    );
+  const COURSE_PDF_COLORS = [
+    { fill: [219, 234, 254], text: [30, 58, 138] },
+    { fill: [237, 233, 254], text: [76, 29, 149] },
+    { fill: [209, 250, 229], text: [6, 78, 59] },
+    { fill: [254, 243, 199], text: [120, 53, 15] },
+    { fill: [254, 205, 211], text: [136, 19, 55] },
+    { fill: [207, 250, 254], text: [8, 51, 68] },
+    { fill: [255, 237, 213], text: [124, 45, 18] },
+    { fill: [252, 231, 243], text: [131, 24, 67] },
+    { fill: [204, 251, 241], text: [11, 94, 81] },
+    { fill: [224, 231, 255], text: [49, 46, 129] }
+  ];
 
-    const csv = [headers, ...rows].map((row) => row.map((cell) => `"${cell || ''}"`).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `schedulo-plan-${planId}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const exportPDF = () => {
+    const filtered = getFilteredTasks().filter((t) => t.scheduled_date && t.scheduled_start && t.scheduled_end);
+    if (filtered.length === 0 || !plan?.start_date || !plan?.end_date) return;
+
+    const courseColorMap = {};
+    courses.forEach((c, i) => {
+      const color = COURSE_PDF_COLORS[i % COURSE_PDF_COLORS.length];
+      courseColorMap[c.id] = color;
+      courseColorMap[c.name] = color;
+    });
+    const getColor = (task) =>
+      courseColorMap[task.course_id] || courseColorMap[task.course_name] || COURSE_PDF_COLORS[0];
+
+    const toMin = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+    let minMin = 24 * 60, maxMin = 0;
+    filtered.forEach((t) => {
+      minMin = Math.min(minMin, toMin(t.scheduled_start));
+      maxMin = Math.max(maxMin, toMin(t.scheduled_end));
+    });
+    const startHour = Math.max(0, Math.floor(minMin / 60) - 1);
+    const endHour = Math.min(24, Math.ceil(maxMin / 60) + 1);
+    const spanMin = (endHour - startHour) * 60;
+
+    const ds = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const weeks = [];
+    let cur = new Date(plan.start_date + 'T00:00:00');
+    const end = new Date(plan.end_date + 'T00:00:00');
+    while (cur <= end) {
+      const monday = new Date(cur);
+      monday.setDate(cur.getDate() - ((cur.getDay() + 6) % 7));
+      const weekDates = Array.from({ length: 7 }, (_, i) => {
+        const d = new Date(monday); d.setDate(monday.getDate() + i); return d;
+      });
+      weeks.push(weekDates);
+      const next = new Date(monday); next.setDate(monday.getDate() + 7);
+      cur = next;
+    }
+
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const pageW = 297, pageH = 210;
+    const margin = 10, labelW = 14;
+    const gridX = margin + labelW;
+    const gridW = pageW - margin - gridX;
+    const colW = gridW / 7;
+    const titleH = 14, headerH = 6;
+    const gridY = margin + titleH + headerH;
+    const gridH = pageH - margin - gridY;
+    const minToY = (mins) => gridY + ((mins - startHour * 60) / spanMin) * gridH;
+    const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const fmt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+    weeks.forEach((weekDates, wi) => {
+      if (wi > 0) doc.addPage();
+      doc.setFontSize(13); doc.setTextColor(30, 41, 59);
+      doc.text(`Schedulo Study Plan — ${fmt(weekDates[0])} to ${fmt(weekDates[6])}`, margin, margin + 6);
+      doc.setFontSize(9); doc.setTextColor(100, 116, 139);
+      doc.text(plan?.name || '', margin, margin + 11);
+
+      weekDates.forEach((d, i) => {
+        const x = gridX + i * colW;
+        doc.setDrawColor(226, 232, 240); doc.setFillColor(248, 250, 252);
+        doc.rect(x, gridY - headerH, colW, headerH, 'FD');
+        doc.setFontSize(8); doc.setTextColor(71, 85, 105);
+        doc.text(`${dayNames[i]} ${d.getDate()}/${d.getMonth() + 1}`, x + 1, gridY - 2);
+      });
+
+      doc.setFontSize(7); doc.setTextColor(148, 163, 184);
+      for (let h = startHour; h <= endHour; h++) {
+        const y = minToY(h * 60);
+        doc.setDrawColor(241, 245, 249);
+        doc.line(gridX, y, gridX + gridW, y);
+        doc.text(`${h}:00`, margin, y - 0.5);
+      }
+      for (let i = 0; i <= 7; i++) {
+        doc.setDrawColor(226, 232, 240);
+        doc.line(gridX + i * colW, gridY - headerH, gridX + i * colW, gridY + gridH);
+      }
+
+      weekDates.forEach((d, i) => {
+        const dateStr = ds(d);
+        const dayTasks = filtered.filter((t) => t.scheduled_date === dateStr);
+        dayTasks.forEach((t) => {
+          const y = minToY(toMin(t.scheduled_start));
+          const h = Math.max(((toMin(t.scheduled_end) - toMin(t.scheduled_start)) / spanMin) * gridH, 4);
+          const x = gridX + i * colW + 0.5;
+          const w = colW - 1;
+          const color = getColor(t);
+          doc.setFillColor(color.fill[0], color.fill[1], color.fill[2]);
+          doc.setDrawColor(color.text[0], color.text[1], color.text[2]);
+          doc.rect(x, y, w, h, 'FD');
+          doc.setTextColor(color.text[0], color.text[1], color.text[2]);
+          doc.setFontSize(6.5);
+          doc.text(`${t.course_name} — ${t.title}`, x + 0.8, y + 3, { maxWidth: w - 1.6 });
+        });
+      });
+    });
+
+    doc.save(`schedulo-plan-${planId}.pdf`);
   };
 
   const archivePlan = async () => {
@@ -100,8 +199,6 @@ export default function Export() {
       </div>);
 
   }
-
-  const filtered = getFilteredTasks();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
@@ -162,7 +259,6 @@ export default function Export() {
                 </div>
               </div>
             }
-            <p className="text-sm text-gray-400 mt-3">{filtered.length} tasks will be exported.</p>
           </div>
 
           {/* Export buttons */}
@@ -171,6 +267,11 @@ export default function Export() {
               <Calendar className="w-8 h-8 text-blue-500 mb-3 group-hover:scale-110 transition-transform" />
               <h3 className="font-semibold text-gray-900">Export as .ics</h3>
               <p className="text-sm text-gray-400 mt-1">Import into Google Calendar, Apple Calendar, Outlook, or any calendar app.</p>
+            </button>
+            <button onClick={exportPDF} className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm hover:border-blue-300 hover:shadow-md transition-all text-left group text-2xl">
+              <FileText className="w-8 h-8 text-rose-500 mb-3 group-hover:scale-110 transition-transform" />
+              <h3 className="font-semibold text-gray-900">Export as PDF</h3>
+              <p className="text-sm text-gray-400 mt-1">Download a printable weekly calendar of your study plan, color-coded by course.</p>
             </button>
             
 
