@@ -180,7 +180,7 @@ export default function Export() {
           </div>
 
           {/* Archive */}
-          <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-6">
+          <div className="bg-white rounded-xl border border-blue-100 p-6 shadow-sm mb-6 hidden">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="font-semibold text-gray-900 flex items-center gap-2">
