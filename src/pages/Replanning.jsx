@@ -18,7 +18,7 @@ const DEFAULT_CAL_END = 21;
 const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 // ── MiniCalendar ────────────────────────────────────────────────────────────
-function MiniCalendar({ tasks, expandedBusyMap, showBlockedTimes, weekOffset, setWeekOffset, pendingChanges }) {
+function MiniCalendar({ tasks, courses, expandedBusyMap, showBlockedTimes, weekOffset, setWeekOffset, pendingChanges }) {
   const getWeekDates = () => {
     const now = new Date(PLANNING_REFERENCE_DATE);
     now.setDate(now.getDate() + weekOffset * 7);
@@ -64,14 +64,29 @@ function MiniCalendar({ tasks, expandedBusyMap, showBlockedTimes, weekOffset, se
     return Math.max((eh * 60 + em - (sh * 60 + sm)) / 60 * HOUR_PX, 18);
   };
 
-  const typeColors = {
-    reading: 'bg-blue-100 border-blue-300 text-blue-800',
-    assignment: 'bg-purple-100 border-purple-300 text-purple-800',
-    exercise: 'bg-green-100 border-green-300 text-green-800',
-    revision: 'bg-amber-100 border-amber-300 text-amber-800',
-    test: 'bg-red-100 border-red-300 text-red-800',
-    project_work: 'bg-indigo-100 border-indigo-300 text-indigo-800'
-  };
+  // Per-course color palette (Tailwind literal classes — must be literal for purge)
+  const COURSE_COLOR_PALETTE = [
+    { bg: 'bg-blue-100', border: 'border-blue-400', text: 'text-blue-900' },
+    { bg: 'bg-violet-100', border: 'border-violet-400', text: 'text-violet-900' },
+    { bg: 'bg-emerald-100', border: 'border-emerald-400', text: 'text-emerald-900' },
+    { bg: 'bg-amber-100', border: 'border-amber-400', text: 'text-amber-900' },
+    { bg: 'bg-rose-100', border: 'border-rose-400', text: 'text-rose-900' },
+    { bg: 'bg-cyan-100', border: 'border-cyan-400', text: 'text-cyan-900' },
+    { bg: 'bg-orange-100', border: 'border-orange-400', text: 'text-orange-900' },
+    { bg: 'bg-pink-100', border: 'border-pink-400', text: 'text-pink-900' },
+    { bg: 'bg-teal-100', border: 'border-teal-400', text: 'text-teal-900' },
+    { bg: 'bg-indigo-100', border: 'border-indigo-400', text: 'text-indigo-900' }
+  ];
+
+  const courseColorMap = (courses || []).reduce((acc, c, i) => {
+    const color = COURSE_COLOR_PALETTE[i % COURSE_COLOR_PALETTE.length];
+    acc[c.id] = color;
+    acc[c.name] = color;
+    return acc;
+  }, {});
+
+  const getTaskColor = (task) =>
+    courseColorMap[task.course_id] || courseColorMap[task.course_name] || COURSE_COLOR_PALETTE[0];
 
   // Merge pending changes preview into tasks (shown at NEW position)
   const previewTasks = tasks.map((t) => {
@@ -186,7 +201,7 @@ function MiniCalendar({ tasks, expandedBusyMap, showBlockedTimes, weekOffset, se
                 'border-orange-400 bg-orange-50 text-orange-900 ring-1 ring-orange-300' :
                 task.status === 'completed' ?
                 'bg-emerald-50 border-emerald-300 text-emerald-700' :
-                typeColors[task.task_type] || 'bg-gray-100 border-gray-200 text-gray-700'}`
+                `${getTaskColor(task).bg} ${getTaskColor(task).border} ${getTaskColor(task).text}`}`
                 }
                 style={{ top: toTopPx(task.scheduled_start), height: toDurPx(task.scheduled_start, task.scheduled_end), left: colLeft, width: colWidth, padding: '2px 3px' }}>
                     {task._isPending && <span className="text-[9px] font-bold text-orange-600 block leading-none">→ moved</span>}
@@ -1007,6 +1022,7 @@ IMPORTANT: Include ALL [MUST MOVE] and [MUST FOLLOW] tasks from the SEQUENCE ANA
               </div>
               <MiniCalendar
                 tasks={tasks}
+                courses={courses}
                 expandedBusyMap={expandedBusyMap}
                 showBlockedTimes={showBlockedTimes}
                 weekOffset={weekOffset}
